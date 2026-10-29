@@ -1,0 +1,59 @@
+# =============================================================================
+# Hydrodynamic drag / added-mass for my_boat
+#   vrx::SimpleHydrodynamics / libSimpleHydrodynamics.so
+# =============================================================================
+# Same plugin VRX attaches to the WAM-V base_link. It implements Fossen's 6-DOF
+# maritime model: added mass + linear and quadratic drag. Without it a buoyant
+# hull bobs/oscillates forever; with it, disturbances (waves, wind, current,
+# pushes) decay to rest -> required for Test 3 (equilibrium) and Test 7 (soak).
+#
+# Body-frame DOF (Fossen / VRX):
+#   X = surge (fwd)    K = roll  (about X)
+#   Y = sway  (port)   M = pitch (about Y)
+#   Z = heave (up)     N = yaw   (about Z)
+#
+# Coefficient naming:
+#   <dof>Dot<vel>   = added mass / added inertia  (NEGATIVE, Fossen sign)
+#   <dof><vel>      = LINEAR drag
+#   <dof><vel><vel> = QUADRATIC drag
+#
+# ASSUMPTIONS / METHOD
+# --------------------
+# These are engineering estimates, scaled from the VRX WAM-V defaults to this
+# heavier (420 kg vs 180 kg) and longer (4.17 m) monohull, shaped to hull form:
+#   * Broadside (sway/heave) drag > axial (surge) drag: a hull pushes much more
+#     water sideways/vertically than along its length.
+#   * Heave (zW/zWW) and pitch (mQ/mQQ) damping are the terms that settle
+#     vertical bobbing and porpoising after a disturbance/wave.
+#   * Yaw (nR/nRR) damping keeps heading bounded under wind/current.
+#   * Added-mass magnitudes are kept BELOW the ~420 kg displaced-fluid mass to
+#     avoid the negative-effective-mass numerical instability.
+# Refine against tow-tank / spec data when available; all values are tunable
+# here and applied automatically by the launch file.
+# =============================================================================
+hydrodynamics:
+  link_name: my_boat/base_link
+
+  # --- Added mass (negative) -------------------------------------------------
+  xDotU: -20.0      # surge: small, slender end-on
+  yDotV: -200.0     # sway:  large, broadside
+  zDotW: -150.0     # heave: large, flat bottom
+  kDotP: -20.0      # roll
+  mDotQ: -200.0     # pitch
+  nDotR: -100.0     # yaw
+
+  # --- Linear drag -----------------------------------------------------------
+  xU: 150.0
+  yV: 400.0
+  zW: 800.0         # primary heave damping
+  kP: 150.0         # roll damping (keeps the wide hull from ringing in roll)
+  mQ: 1000.0        # pitch damping
+  nR: 600.0         # yaw damping
+
+  # --- Quadratic drag --------------------------------------------------------
+  xUU: 200.0
+  yVV: 600.0
+  zWW: 1000.0
+  kPP: 200.0
+  mQQ: 1200.0
+  nRR: 800.0

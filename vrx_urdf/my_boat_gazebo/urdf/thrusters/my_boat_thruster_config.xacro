@@ -1,0 +1,116 @@
+<?xml version="1.0"?>
+<!--
+  my_boat_thruster_config.xacro
+  =============================
+  The PHYSICS layer for the propulsion hardware. Analogue of VRX's
+  wamv_gazebo_thruster_config.xacro. Two macros:
+
+    * thruster_force  -> gz::sim::systems::Thruster on a propeller joint.
+                         Command = thrust FORCE in Newtons on
+                         /<ns>/thrusters/<name>/thrust  (gz.msgs.Double).
+                         Reversible, and the reverse limit is INDEPENDENT of
+                         the forward one (see min_thrust below) because the
+                         measured bollard curves are asymmetric.
+                         velocity_control=true => the plugin back-solves the
+                         propeller speed for the demanded thrust and spins the
+                         visual propeller joint accordingly.
+
+    * steering_actuator -> gz::sim::systems::JointPositionController on the
+                         steering joint. Command = angle in RADIANS on
+                         /<ns>/thrusters/<name>/pos  (gz.msgs.Double).
+
+  Thrust model (each unit): T = Ct * rho * |n| * n * D^4 . We pick the propeller
+  diameter from the drawings (D = 0.10 m, "Phi 0.10") and a WAM-V-class
+  coefficient (Ct = 0.004422); min/max_thrust_cmd then cap the force at the real
+  hardware limit, so the commanded Newtons are what actually get applied. The
+  per-unit limits now live in my_boat_thruster_layout.xacro and come from the
+  BOLLARD-PULL measurements, not the datasheet. See
+  thruster_allocator/config/allocator_bollard.yaml.
+-->
+<robot xmlns:xacro="http://ros.org/wiki/xacro" name="my_boat_thruster_config">
+
+  <!-- ====================================================================
+       Force-generating thruster on a propeller joint.
+         name        : T1 | T2 | T3   (also the topic key)
+         joint_name  : the propeller (spin) joint the force is applied along
+         max_thrust  : upper saturation limit (N), signed, in the unit's own
+                       command convention (+ = the direction its joint <axis>
+                       points, i.e. the "Fwd-rot thrust" column of the table
+                       in my_boat_engine.xacro).
+         min_thrust  : lower saturation limit (N), signed. OPTIONAL: omit for
+                       a symmetric unit and it defaults to -max_thrust, which
+                       is what the v2 layout still uses.
+         prop_diam   : propeller diameter (m)
+       ==================================================================== -->
+  <xacro:macro name="thruster_force"
+               params="name joint_name max_thrust min_thrust:=''
+                       prop_diam:='0.10' thrust_coefficient:='0.004422'">
+    <gazebo>
+      <plugin filename="gz-sim-thruster-system"
+              name="gz::sim::systems::Thruster">
+        <joint_name>${namespace}/${joint_name}</joint_name>
+        <thrust_coefficient>${thrust_coefficient}</thrust_coefficient>
+        <fluid_density>1000</fluid_density>
+        <propeller_diameter>${prop_diam}</propeller_diameter>
+        <velocity_control>true</velocity_control>
+        <!-- Reversible. These two clamps are independent in gz-sim, so an
+             asymmetric bollard curve (reverse ~= half of forward) is expressed
+             directly rather than being flattened to the smaller magnitude. -->
+        <max_thrust_cmd>${max_thrust}</max_thrust_cmd>
+        <min_thrust_cmd>${min_thrust if min_thrust != '' else -max_thrust}</min_thrust_cmd>
+        <!-- ABSOLUTE topic, namespace baked in. Do NOT split this back
+             into a <namespace> element plus a relative <topic>.
+             gz-sim 7's Thruster system does not compose those two the way
+             this xacro assumed. It silently fell back to its own default,
+             /model/(model)/joint/(joint)/cmd_thrust, so the ROS bridge
+             published 554 N into a topic nothing listened to. Measured over
+             two bags (circle_diag_1127 and _1209): the T1, T2 and T3
+             propeller joints span 0.0000 rad across 930 s while 554 N was
+             commanded 100% of the time, and the boat only weathervaned in
+             the wind at 0.011 rad/s.
+             The steering plugin below always worked because it already used
+             this absolute form. Match it. -->
+        <topic>${namespace}/thrusters/${name}/thrust</topic>
+        <!-- Convenience key for the ros_gz bridge (ignored by gz). -->
+        <name>${name}</name>
+      </plugin>
+    </gazebo>
+  </xacro:macro>
+
+  <!-- ====================================================================
+       Steering actuator (position-controlled revolute joint).
+         name        : T3 (topic key)
+         joint_name  : the steering joint to drive
+       Command on /<ns>/thrusters/<name>/pos  (radians, clamped to +/-0.3665
+       by the joint <limit>). use_velocity_commands=true => the controller
+       issues velocity to reach the target, matching a real servo's motion.
+
+       rate_max: with use_velocity_commands the PID output IS the joint
+       velocity, and cmd_max/cmd_min are what actually bound it (the joint's
+       own <limit velocity> is not enforced on a direct velocity command).
+       Default 0.1885 rad/s = 10.8 deg/s, the MEASURED linear-servo speed
+       (125 us/s over the calibrated 1242-1728 us span = 486 us / 42 deg,
+       ~3.9 s end to end). Keep this equal to allocator_bollard.yaml's
+       actuator.alpha_rate_max_deg_s, or the simulated servo will outrun the
+       one the allocator is planning for.
+       ==================================================================== -->
+  <xacro:macro name="steering_actuator"
+               params="name joint_name p:='25.0' i:='0.0' d:='2.0'
+                       rate_max:='0.1885'">
+    <gazebo>
+      <plugin filename="gz-sim-joint-position-controller-system"
+              name="gz::sim::systems::JointPositionController">
+        <joint_name>${namespace}/${joint_name}</joint_name>
+        <topic>${namespace}/thrusters/${name}/pos</topic>
+        <p_gain>${p}</p_gain>
+        <i_gain>${i}</i_gain>
+        <d_gain>${d}</d_gain>
+        <use_velocity_commands>true</use_velocity_commands>
+        <cmd_max>${rate_max}</cmd_max>
+        <cmd_min>${-rate_max}</cmd_min>
+        <name>${name}</name>
+      </plugin>
+    </gazebo>
+  </xacro:macro>
+
+</robot>

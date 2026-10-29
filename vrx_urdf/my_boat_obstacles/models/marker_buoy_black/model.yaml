@@ -1,0 +1,11 @@
+# VRX marker buoy, black
+# The mesh comes from Gazebo's Fuel cache (the same model the VRX worlds use),
+# so nothing is copied here. Collada in feet and Y-up: measured automatically,
+# stood upright by up_axis.
+mesh: fuel:openrobotics/mb_marker_buoy_red/meshes/mb_marker_buoy.dae
+forward_axis: +x
+up_axis: +y
+draft: 0.3
+class: buoy
+collision: box
+colour: [0.05, 0.05, 0.05]

@@ -1,0 +1,128 @@
+<?xml version="1.0"?>
+<!--
+  my_boat_thruster_layout_v2.xacro
+  ================================
+  The vessel's **v2 (decoupled) propulsion ARRANGEMENT**: two centreline lateral
+  thrusters straddling the centre of gravity — one FORWARD, one AFT — plus a
+  fixed axial stern propeller. Sibling of my_boat_thruster_layout.xacro (v1:
+  two bow tunnels side by side + a steerable stern drive), which is unchanged.
+
+  Source of truth for the geometry:
+    dynamic_positioning/claude/thruster_allocator_v2/config/allocator_v2.yaml
+    dynamic_positioning/claude/thruster_allocator_v2/image/layout_v2.jpg
+
+                     bow (+X)
+                      /\
+                     /  \
+                    |    |
+                    | T1 |   <===>   forward lateral   r1 = (+d1,  0  )
+                    |    |
+                    | oC |         centre of gravity = base_link origin
+                    |    |
+                    | T2 |   <===>   aft lateral       r2 = (-d2,  0  )
+                    | P1 |     |     stern propeller   r3 = (-d3, p1_y)
+                    |____|
+                     stern (-X)
+
+  All positions are in the my_boat/base_link (CG-centred) frame: x fwd, y port,
+  z up.
+
+    T1  fwd lateral : x=+d1  y=0     z=-0.23  yaw=+1.5708  (+cmd thrust +Y port)
+    T2  aft lateral : x=-d2  y=0     z=-0.23  yaw=+1.5708  (+cmd thrust +Y port)
+    P1  stern prop  : mount x=-d3 y=p1_y z=-0.25  yaw=+3.1416 (faces -X);
+                      strut 0.40 m -> prop at z=-0.65; NO steering joint.
+
+  Sign conventions for the downstream ROS 2 allocator (thruster_allocator_v2):
+    * T1 > 0 and T2 > 0 BOTH thrust to PORT (+Y)   <- differs from v1!
+    * P1 > 0 thrusts FORWARD (+X); P1 < 0 astern.
+    * Resulting 3-DOF map, exactly the allocator's B:
+          X = P1
+          Y = T1 + T2
+          N = d1*T1 - d2*T2 - p1_y*P1
+      det(B) = -(d1 + d2) = -2.30 != 0  ->  full rank: pure sway and pure yaw are both
+      commandable, and surge is decoupled from them.
+    * d3 does NOT appear in B (an axial force on the centreline has no moment
+      arm about Z); it only sets where the leg is drawn and where the pitch
+      moment acts. p1_y != 0 is the parasitic-yaw-bias knob.
+
+  ===========================================================================
+  RETUNING THE STATIONS
+  ===========================================================================
+  d1 / d2 / d3 / p1_y are GLOBAL properties fed by <xacro:arg> from
+  my_boat_gazebo_v2.urdf.xacro, so they can be overridden without editing any
+  file:
+      ros2 launch my_boat_gazebo my_boat_world_v2.launch.py d1:=1.90 d2:=1.40
+      xacro my_boat_gazebo_v2.urdf.xacro namespace:=my_boat d1:=1.90 > boat.urdf
+  KEEP THEM EQUAL TO allocator_v2.yaml — the allocator's B and the simulated
+  hull must describe the same boat, or every yaw command is biased. The current
+  defaults (1.40 / 0.90 / 1.40) mirror that file; it previously held the
+  sketch-scaled 1.90 / 1.40 / 1.50, so re-check both after any change.
+
+  ===========================================================================
+  HULL-FIT CHECK  (measured off models/my_boat/mesh/my_boat_hull.stl)
+  ===========================================================================
+  Hull in base_link: bow tip x=+2.315, transom x=-1.854, keel z=-0.49.
+  At the 420 kg equilibrium draft (~0.10 m, buoyancy.yaml) the waterline sits at
+  z ~= -0.40, so the WETTED band of the hull is only x in [-0.95, +1.65]:
+
+      station x   | +2.0  +1.9  +1.8  +1.7  +1.6  +1.5  +1.4  ... -0.9  -1.0
+      keel z      | -0.22 -0.29 -0.33 -0.38 -0.42 -0.43 -0.45 ... -0.40 -0.37
+      beam        |  0.75  0.89  0.99  1.09  1.18  1.26  1.32       1.79  1.59
+
+  The current defaults put BOTH laterals inside that band: T1 at x=+1.40 (keel
+  -0.45, hull beam 1.32) and T2 at x=-0.90 (keel -0.40, right at the aft edge of
+  the wetted run). The earlier sketch-scaled stations (d1=1.90, d2=1.40) did
+  not — the forefoot at x=+1.90 is 0.11 m ABOVE the waterline — which is why
+  they were moved in. If you go back to them, expect the simulation to remain
+  ideal (the gz Thruster plugin applies the commanded force regardless of
+  submersion) while the real boat would ventilate; the trade is yaw authority,
+  (d1+d2) 2.30 m -> 3.30 m, i.e. 225 -> 323 Nm at 98 N laterals.
+
+  Two depths worth knowing, unchanged by the station choice:
+    * lat_z = -0.23 is INSIDE the hull at both stations but ~0.17 m ABOVE the
+      modelled waterline. At a 0.10 m draft this hull has no station deep enough
+      to bury a 0.10 m tunnel; a real installation implies a deeper draft or
+      externally mounted pods. Physics in gz is unaffected (force is applied at
+      the link, submerged or not) apart from the roll arm.
+    * P1's leg reaches z=-0.65, ~0.25 m BELOW the waterline, exactly like the v1
+      stern drive, so it is genuinely in the water.
+-->
+<robot xmlns:xacro="http://ros.org/wiki/xacro" name="my_boat_thruster_layout_v2">
+
+  <xacro:include filename="$(find my_boat_gazebo)/urdf/thrusters/my_boat_engine_v2.xacro"/>
+  <!-- Physics macros are shared with v1 (thruster_force); steering_actuator is
+       defined there too but deliberately NOT used — v2 has nothing to steer. -->
+  <xacro:include filename="$(find my_boat_gazebo)/urdf/thrusters/my_boat_thruster_config.xacro"/>
+
+  <!-- ===================== Mounting depths (base_link / CG frame) ========= -->
+  <!-- Lateral thrusters: 0.23 m below the CG, same as the v1 bow tunnels. -->
+  <xacro:property name="lat_z"        value="-0.23"/>
+  <!-- Stern leg: hull mount 0.25 m below the CG, 0.40 m strut -> prop z=-0.65. -->
+  <xacro:property name="p1_mount_z"   value="-0.25"/>
+  <xacro:property name="p1_prop_drop" value="0.40"/>
+
+  <!-- ===================== Hardware thrust limits (N) ===================== -->
+  <xacro:property name="lat_max_thrust"   value="98.0"/>   <!-- APISQUEEN U92 Pro, 10 kgf -->
+  <xacro:property name="stern_max_thrust" value="632.0"/>  <!-- Torqeedo Cruise 3.0 R -->
+
+  <!-- ======================= T1: forward lateral ========================== -->
+  <!-- yaw +90 deg: positive command thrusts +Y (port); lever +d1 -> +N -->
+  <xacro:lateral_thruster prefix="T1" x="${d1}" y="0.0" z="${lat_z}" yaw="1.5708"/>
+  <xacro:thruster_force name="T1" joint_name="T1_propeller_joint"
+                        max_thrust="${lat_max_thrust}"/>
+
+  <!-- ========================= T2: aft lateral ============================ -->
+  <!-- yaw +90 deg: positive command thrusts +Y (port); lever -d2 -> -N -->
+  <xacro:lateral_thruster prefix="T2" x="${-d2}" y="0.0" z="${lat_z}" yaw="1.5708"/>
+  <xacro:thruster_force name="T2" joint_name="T2_propeller_joint"
+                        max_thrust="${lat_max_thrust}"/>
+
+  <!-- ==================== P1: fixed stern propeller ======================= -->
+  <!-- yaw 180 deg: prop faces -X so positive command thrusts +X (forward).
+       No steering joint and therefore no steering_actuator plugin. -->
+  <xacro:stern_propeller prefix="P1" x="${-d3}" y="${p1_y}" z="${p1_mount_z}"
+                         yaw="3.1416" prop_drop="${p1_prop_drop}"/>
+  <xacro:thruster_force name="P1" joint_name="P1_propeller_joint"
+                        max_thrust="${stern_max_thrust}"/>
+
+</robot>

@@ -1,0 +1,54 @@
+# =============================================================================
+# Hydrodynamic drag / added-mass configuration for floating_log
+# =============================================================================
+# Consumed by the vrx::SimpleHydrodynamics plugin (libSimpleHydrodynamics.so),
+# the same plugin VRX attaches to the WAM-V base_link. It implements Fossen's
+# maritime equations: added mass + linear and quadratic drag in all 6 DOF.
+#
+# Body-frame DOF convention (Fossen / VRX):
+#   X = surge (along log axis)   K = roll  (about X, the long axis)
+#   Y = sway  (broadside)        M = pitch (about Y)
+#   Z = heave (vertical)         N = yaw   (about Z)
+#
+# Coefficient naming:
+#   <dof>Dot<vel>  = added mass / added inertia (negative, per Fossen)
+#   <dof><vel>     = LINEAR drag term
+#   <dof><vel><vel>= QUADRATIC drag term
+#
+# These are realistic PLACEHOLDER values, hand-scaled from the WAM-V defaults
+# down to a 50 kg, 2 m log and shaped to the cylinder's symmetry:
+#   * Broadside (sway/heave) drag > axial (surge) drag  -> a cylinder pushes
+#     far more water sideways than end-on.
+#   * Roll (about the long axis) damping is deliberately tiny: a smooth
+#     cylinder offers almost no resistance to spinning about its own axis.
+#     This is physically correct (a real log spins freely) yet non-zero so it
+#     is not frictionless.
+#   * Heave (zW) and pitch (mQ) damping are the terms that make a disturbed
+#     log settle back to equilibrium instead of oscillating forever.
+# =============================================================================
+hydrodynamics:
+  link_name: base_link
+
+  # --- Added mass (negative) -------------------------------------------------
+  xDotU: -5.0     # surge: small, end-on
+  yDotV: -40.0    # sway:  large, broadside
+  zDotW: -40.0    # heave: large, broadside
+  kDotP: -1.0     # roll:  ~0, axial symmetry (log spins freely)
+  mDotQ: -15.0    # pitch
+  nDotR: -15.0    # yaw
+
+  # --- Linear drag -----------------------------------------------------------
+  xU: 20.0
+  yV: 60.0
+  zW: 120.0       # primary heave damping (settles vertical bobbing)
+  kP: 5.0         # low roll damping (cylinder symmetry)
+  mQ: 80.0        # pitch damping
+  nR: 50.0
+
+  # --- Quadratic drag --------------------------------------------------------
+  xUU: 30.0
+  yVV: 80.0
+  zWW: 150.0
+  kPP: 8.0
+  mQQ: 100.0
+  nRR: 70.0

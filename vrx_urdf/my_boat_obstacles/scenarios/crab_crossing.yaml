@@ -1,0 +1,16 @@
+# World coordinates (Gazebo ENU): x east, y north, heading_deg 0 = east, 90 = north.
+# Obstacles spawn at "start" and HOLD STILL until you call
+#   ros2 service call /obstacle_spawner/run std_srvs/srv/Trigger
+#
+# Heading != course: the bow points 15 deg off where it actually goes (course
+# 100, heading 115). CPA must come from COURSE (the velocity), Rule 13/19
+# sectors from HEADING (the box yaw). A planner that mixes them up shows here.
+# design: {own_speed: 1.4, own_heading_deg: 0, tcpa: 45.0, dcpa: 0.0}
+scenario: {name: crab_crossing}
+obstacles:
+  - name: crabbing_crosser
+    model: brazilian
+    vessel_class: power_driven
+    crab_deg: 15.0
+    start: {x: -455.62, y: 132.82, heading_deg: 100.0}
+    motion: {type: constant_velocity, speed: 1.2}

@@ -1,0 +1,13 @@
+# World coordinates (Gazebo ENU): x east, y north, heading_deg 0 = east, 90 = north.
+# Obstacles spawn at "start" and HOLD STILL until you call
+#   ros2 service call /obstacle_spawner/run std_srvs/srv/Trigger
+#
+# Static-but-unmapped: buoys, a pillar, a barge and a moored boat ahead of the
+# spawn. Planner 2 sees these as contacts with v ~ 0. (run does nothing to them.)
+scenario: {name: static_field}
+obstacles:
+  - {name: buoy_1, model: buoy, start: {x: -503.0, y: 189.0}}
+  - {name: buoy_2, model: buoy, start: {x: -488.0, y: 182.0}}
+  - {name: pillar_1, model: pillar, start: {x: -473.0, y: 188.0}}
+  - {name: barge_1, model: barge, start: {x: -458.0, y: 176.0, heading_deg: 30.0}}
+  - {name: moored_boat, model: bass_boat, start: {x: -483.0, y: 198.0, heading_deg: 90.0}}

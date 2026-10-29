@@ -1,0 +1,62 @@
+# =============================================================================
+# thrusters.yaml  -  ros_gz_bridge configuration for the my_boat propulsion bus
+# =============================================================================
+# Bridges the four command topics the propulsion plugins listen on, from ROS 2
+# into Gazebo. A downstream ROS 2 force allocator / DP controller publishes to
+# the ROS side; Gazebo's Thruster + JointPositionController plugins consume them.
+#
+# Run with:
+#   ros2 run ros_gz_bridge parameter_bridge \
+#       --ros-args -p config_file:=<this file>
+# (the spawn launch can also start it automatically; see docs/THRUSTERS.md)
+#
+# Message types:
+#   thrust commands  -> std_msgs/Float64  <-> gz.msgs.Double   (Newtons)
+#   steering command -> std_msgs/Float64  <-> gz.msgs.Double   (radians)
+# =============================================================================
+
+# --- T1: port bow tunnel thruster (APISQUEEN U92 Pro, +/-98 N) ---------------
+- ros_topic_name: "/my_boat/thrusters/T1/thrust"
+  # gz-sim 7 Thruster IGNORES the <topic> element in the model SDF and
+  # keeps its default /model/<model>/joint/<joint>/cmd_thrust. Proven
+  # twice: publishing here moved the boat 0.71 m/s while the model
+  # topic below produced 0.0000 rad of propeller rotation over 930 s.
+  # JointPositionController (T3/pos) DOES honour <topic>, which is why
+  # steering alone worked. Do not "tidy" this back to the model topic.
+  gz_topic_name:  "/model/my_boat/joint/my_boat/T1_propeller_joint/cmd_thrust"
+  ros_type_name:  "std_msgs/msg/Float64"
+  gz_type_name:   "gz.msgs.Double"
+  direction: ROS_TO_GZ
+
+# --- T2: starboard bow tunnel thruster (APISQUEEN U92 Pro, +/-98 N) ----------
+- ros_topic_name: "/my_boat/thrusters/T2/thrust"
+  # gz-sim 7 Thruster IGNORES the <topic> element in the model SDF and
+  # keeps its default /model/<model>/joint/<joint>/cmd_thrust. Proven
+  # twice: publishing here moved the boat 0.71 m/s while the model
+  # topic below produced 0.0000 rad of propeller rotation over 930 s.
+  # JointPositionController (T3/pos) DOES honour <topic>, which is why
+  # steering alone worked. Do not "tidy" this back to the model topic.
+  gz_topic_name:  "/model/my_boat/joint/my_boat/T2_propeller_joint/cmd_thrust"
+  ros_type_name:  "std_msgs/msg/Float64"
+  gz_type_name:   "gz.msgs.Double"
+  direction: ROS_TO_GZ
+
+# --- T3: stern drive surge thrust (Torqeedo Cruise 3.0 R, +/-632 N) ----------
+- ros_topic_name: "/my_boat/thrusters/T3/thrust"
+  # gz-sim 7 Thruster IGNORES the <topic> element in the model SDF and
+  # keeps its default /model/<model>/joint/<joint>/cmd_thrust. Proven
+  # twice: publishing here moved the boat 0.71 m/s while the model
+  # topic below produced 0.0000 rad of propeller rotation over 930 s.
+  # JointPositionController (T3/pos) DOES honour <topic>, which is why
+  # steering alone worked. Do not "tidy" this back to the model topic.
+  gz_topic_name:  "/model/my_boat/joint/my_boat/T3_propeller_rotation_joint/cmd_thrust"
+  ros_type_name:  "std_msgs/msg/Float64"
+  gz_type_name:   "gz.msgs.Double"
+  direction: ROS_TO_GZ
+
+# --- T3: steering angle (ServoCity HD linear servo, +/-0.3665 rad = +/-21 deg)-
+- ros_topic_name: "/my_boat/thrusters/T3/pos"
+  gz_topic_name:  "/my_boat/thrusters/T3/pos"
+  ros_type_name:  "std_msgs/msg/Float64"
+  gz_type_name:   "gz.msgs.Double"
+  direction: ROS_TO_GZ

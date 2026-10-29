@@ -1,0 +1,10 @@
+# A starboard-hand channel marker (spar + cone top). The STL was exported
+# Y-UP and in CENTIMETRES, like many CAD tools do -- scale and up_axis fix it.
+mesh: marker.stl
+scale: 0.01              # cm -> m
+forward_axis: +x
+up_axis: +y              # this mesh's "up" is its +y
+draft: 1.0               # 1 m of spar under water
+class: marker
+collision: box
+colour: [0.05, 0.55, 0.15]   # an STL has no colour of its own (and no texture coords)

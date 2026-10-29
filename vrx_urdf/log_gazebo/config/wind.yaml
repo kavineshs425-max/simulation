@@ -1,0 +1,35 @@
+# =============================================================================
+# Wind configuration for floating_log
+# =============================================================================
+# VRX applies wind through the vrx::USVWind plugin (libUSVWind.so), which
+# lives in the WORLD file, not the model. Each wind-affected body is listed
+# as a <wind_obj> with a windage coefficient vector.
+#
+# Two things are therefore required for the log to feel wind:
+#   1. The log's base_link sets <enable_wind>true</enable_wind> (handled in
+#      log_gazebo.xacro). This opts the link in to Gazebo's wind system.
+#   2. A <wind_obj> entry for the log is added to the world's USVWind plugin.
+#      A ready-to-paste snippet is generated at:
+#        worlds/examples/wind_obj_snippet.sdf
+#      and a full standalone test world is provided at:
+#        worlds/examples/floating_log_test.sdf
+#
+# coeff_vector = windage coefficients (x, y, z). The log presents far more
+# side area than end area, so the lateral coefficient dominates; the small
+# z term accounts for the modest exposed top surface. Values follow the same
+# FAU-report basis VRX uses for the WAM-V, scaled to the log's exposed area.
+# =============================================================================
+wind:
+  name: floating_log
+  link_name: base_link
+  coeff_vector_x: 0.5
+  coeff_vector_y: 0.5
+  coeff_vector_z: 0.33
+
+  # World-level wind field (used by the standalone example world; in the real
+  # VRX world these come from the existing world configuration).
+  wind_direction_deg: 240.0
+  wind_mean_velocity: 5.0
+  var_wind_gain_constants: 0.0
+  var_wind_time_constants: 2.0
+  update_rate: 10.0

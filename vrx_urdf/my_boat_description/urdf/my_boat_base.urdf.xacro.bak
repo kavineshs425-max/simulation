@@ -1,0 +1,172 @@
+<?xml version="1.0"?>
+<!--
+  my_boat_base.urdf.xacro
+  =======================
+  Pure body description for the custom boat hull. Mirrors the role of VRX's
+  wamv_description/urdf/wamv_base.urdf.xacro: it defines ONLY the rigid body
+  (base_link geometry + inertia + the enable_wind hint). No marine physics
+  plugins, no thrusters and no sensors live here — those are layered on top by
+  my_boat_gazebo, exactly as wamv_gazebo layers them onto wamv_description.
+
+  ===========================================================================
+  MESH: STL (raw SolidWorks coordinates)  — see docs/FRAME_AND_CG.md
+  ===========================================================================
+  We use the STL export (models/my_boat/mesh/my_boat_hull.stl), NOT the DAE.
+  The DAE (SolidWorks -> Blender -> COLLADA) had a transform baked into its
+  scene node (scale + rotation + a translation of ~0.19/0.57/0.95 m) that gz
+  applies on load, which shifted the origin and broke CG alignment. An STL is
+  raw triangles in the original SolidWorks frame, so the geometry, the CG and
+  the inertia all live in ONE coordinate system again.
+
+  STL facts (verified): vertices in MILLIMETRES; STL volume = 2.9755 m^3,
+  matching the CAD report (2.98 m^3) -> this is the true CAD geometry.
+  SolidWorks frame is "Y-up", origin at a hull corner:
+        CAD +X = lateral (beam)       STL range 13 .. 1835 mm  (1.822 m)
+        CAD +Y = vertical (up, keel=0) STL range  2 ..  933 mm  (0.931 m)
+        CAD +Z = longitudinal (fore/aft) STL range 0 .. 4168 mm (4.168 m)
+
+  ===========================================================================
+  CG-CENTRED base_link
+  ===========================================================================
+  base_link is placed at the centre of gravity (deliberate design choice).
+  The CG used is the HULL VOLUME CENTROID, computed from the STL:
+        CG (CAD/STL mm) = (924.5, 491.6, 2314.5)
+  Why the centroid and not the report's literal CG numbers:
+    * The report CG is (X=0, Y=490, Z=470) mm. Its Y (490) matches the volume
+      centroid Y (491.6) almost exactly -> the vertical CG is real (measured
+      from the keel).
+    * But report X=0 and Z=470 fall at the hull EDGES (centroid X=924.5,
+      Z=2314.5) — physically impossible for a CG. They are placeholder values
+      from the "user-overridden" CG field. So the volume centroid is used for
+      X and Z (and agrees with the report for Y). See docs/FRAME_AND_CG.md.
+      To force a different CG, just edit cg_*_mm below.
+
+  CAD -> ROS (x-fwd, y-port, z-up) is the cyclic axis permutation
+        ros_x = CAD_z (longitudinal),  ros_y = CAD_x (lateral),  ros_z = CAD_y
+  i.e. rpy = (pi/2, 0, pi/2) = "1.5708 0 1.5708", with scale 0.001 (mm->m).
+  The mesh is then translated by -R*CG so the CG lands on base_link (0,0,0).
+
+  A further 180-deg flip about Z (see the mesh block below) orients the pointed
+  bow to +X. Resulting hull extent in base_link/ROS metres (CG inside the hull):
+        x (fwd) : -1.854 .. 2.315   (length 4.168 m; pointed BOW at +X)
+        y (port): -0.911 .. 0.911   (beam   1.822 m)
+        z (up)  : -0.490 .. 0.441   (height 0.931 m; CG slightly above mid)
+-->
+<robot xmlns:xacro="http://ros.org/wiki/xacro" name="my_boat">
+
+  <!-- Namespace arg (kept for parity with wamv_base.urdf.xacro). -->
+  <xacro:arg name="namespace" default="my_boat"/>
+  <xacro:property name="namespace" value="$(arg namespace)" scope="global"/>
+
+  <!-- ====================================================================
+       Authoritative mass (from mass_properties.pdf, user-overridden).
+       CAD volume/density are NOT physical (solid-body artefact) and unused.
+       ==================================================================== -->
+  <xacro:property name="boat_mass" value="420.0"/>          <!-- kg -->
+
+  <!-- Centre of gravity in the CAD/STL frame (millimetres). base_link is
+       placed here. Defaults = hull volume centroid (Y matches the report). -->
+  <xacro:property name="cg_x_mm" value="924.5"/>            <!-- CAD X lateral      -->
+  <xacro:property name="cg_y_mm" value="491.6"/>            <!-- CAD Y vertical     -->
+  <xacro:property name="cg_z_mm" value="2314.5"/>           <!-- CAD Z longitudinal -->
+
+  <!-- Mesh placement: scale (mm->m), CAD->ROS rotation, and -R*CG translation
+       so the CG lands on the base_link origin.
+       NOTE: the raw STL has its POINTED BOW at CAD_z=0, which the base CAD->ROS
+       map sends to ROS -X. That renders the boat nose-aft (the +X bow thrusters
+       end up over the blunt transom). We therefore add a 180-deg flip about the
+       vertical (base_link Z) so the pointed bow points +X, matching the docx
+       frame (+X = bow). The flip = Rz(pi): it negates the ROS x & y mesh
+       offsets and turns the rpy yaw from +pi/2 into -pi/2. CG stays at the
+       origin, so mass, draft and the symmetric buoyancy box are unchanged. -->
+  <xacro:property name="mesh_scale" value="0.001"/>
+  <xacro:property name="mesh_rpy"   value="1.5708 0 -1.5708"/>  <!-- +Rz(pi) flip -->
+  <!-- xyz = Rz(pi) * (-R*scale*CG) -> ROS x & y negated, z unchanged -->
+  <xacro:property name="mesh_off_x" value="${ cg_z_mm*mesh_scale}"/>  <!-- +2.3145 -->
+  <xacro:property name="mesh_off_y" value="${ cg_x_mm*mesh_scale}"/>  <!-- +0.9245 -->
+  <xacro:property name="mesh_off_z" value="${-cg_y_mm*mesh_scale}"/>  <!-- -0.4916 -->
+
+  <!-- ====================================================================
+       Inertia tensor, referenced to the CoM and rotated into the ROS frame
+       ( I_ros = R * I_cad * R^T ). base_link IS the CoM, so this at-CoM tensor
+       is exact with no parallel-axis term.
+         At-CoM CAD : Lxx=606.43 Lyy=652.79 Lzz=100.22 Lyz=-5.48
+         ROS        : Ixx=100.22 Iyy=606.43 Izz=652.79 Ixz=-5.48
+       (roll Ixx smallest, yaw Izz largest — physically sensible.)
+       The 180-deg hull flip about Z (see mesh block) sends x->-x, so the only
+       off-diagonal term, Ixz, flips sign (-5.48 -> +5.48); the diagonal is
+       unchanged.
+       ==================================================================== -->
+  <xacro:property name="ixx" value="100.22"/>
+  <xacro:property name="iyy" value="606.43"/>
+  <xacro:property name="izz" value="652.79"/>
+  <xacro:property name="ixy" value="0.0"/>
+  <xacro:property name="ixz" value="5.48"/>
+  <xacro:property name="iyz" value="0.0"/>
+
+  <!-- ====================================================================
+       base_link : the single rigid body and the root body frame.
+       ==================================================================== -->
+  <link name="${namespace}/base_link">
+
+    <!-- Inertial: CoM at the base_link origin (= CG). -->
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="${boat_mass}"/>
+      <inertia ixx="${ixx}" ixy="${ixy}" ixz="${ixz}"
+                            iyy="${iyy}" iyz="${iyz}"
+                                         izz="${izz}"/>
+    </inertial>
+
+    <!-- Visual: the imported STL hull, scaled, rotated and CG-aligned. -->
+    <visual name="hull_visual">
+      <origin xyz="${mesh_off_x} ${mesh_off_y} ${mesh_off_z}" rpy="${mesh_rpy}"/>
+      <!-- Resolved via GZ_SIM_RESOURCE_PATH (description hook registers
+           share/my_boat_description/models). -->
+      <geometry>
+        <mesh filename="model://my_boat/mesh/my_boat_hull.stl"
+              scale="${mesh_scale} ${mesh_scale} ${mesh_scale}"/>
+      </geometry>
+      <!-- STL carries no colour; give the hull a tan material. -->
+      <material name="hull_tan">
+        <color rgba="0.80 0.66 0.42 1.0"/>
+      </material>
+    </visual>
+
+    <!-- Collision: a SIMPLIFIED box (NOT the visual mesh) for stable contacts,
+         fitted just inside the hull bbox and centred on the hull centroid in
+         base_link/ROS. Best practice for marine vehicles: primitives, not a
+         triangle-mesh collision (faster, far more numerically stable). The
+         collision shape is NOT used for buoyancy — PolyhedraBuoyancyDrag uses
+         its own <buoyancy> volume (see my_boat_gazebo). It only matters for
+         contacts (docking, grounding, vessel-vessel).
+           After the 180-deg flip the hull bbox (base_link) is
+           x[-1.854,2.315] y[-0.911,0.911] z[-0.490,0.441] (pointed bow at +X);
+           centroid ~ (+0.23, 0, -0.025); box undersized to avoid poke-through. -->
+    <collision name="hull_collision">
+      <origin xyz="0.23 0.0 -0.025" rpy="0 0 0"/>
+      <geometry>
+        <box size="4.0 1.7 0.85"/>
+      </geometry>
+    </collision>
+
+  </link>
+
+  <!-- gz material so the hull also renders coloured in Gazebo. -->
+  <gazebo reference="${namespace}/base_link">
+    <visual>
+      <material>
+        <ambient>0.80 0.66 0.42 1.0</ambient>
+        <diffuse>0.80 0.66 0.42 1.0</diffuse>
+        <specular>0.2 0.2 0.2 1.0</specular>
+      </material>
+    </visual>
+  </gazebo>
+
+  <!-- Opt the whole model in to Gazebo's wind system (USVWind lives in the
+       world and only pushes links/models that enable wind). Mirrors WAM-V. -->
+  <gazebo>
+    <enable_wind>true</enable_wind>
+  </gazebo>
+
+</robot>

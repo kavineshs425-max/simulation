@@ -1,0 +1,51 @@
+# =============================================================================
+# Buoyancy + drag for my_boat
+#   vrx::PolyhedraBuoyancyDrag / libPolyhedraBuoyancyDrag.so
+# =============================================================================
+# The same volumetric buoyancy VRX uses for its buoys. It integrates the
+# SUBMERGED VOLUME of the <buoyancy> box and applies Archimedes' force at the
+# submerged centroid, so a single box gives roll/pitch restoring (the centre of
+# buoyancy shifts as the hull heels). NOTE: this is the BUOYANCY volume, NOT the
+# collision shape (collision is a separate box in my_boat_description, used only
+# for contacts).
+#
+# DISPLACEMENT / DRAFT  (buoyancy from MASS + water density; CAD density unused)
+# -----------------------------------------------------------------------------
+#   Vessel mass        m   = 420 kg
+#   Water density      rho = 1000 kg/m^3
+#   Equilib. displaced V   = m/rho = 0.420 m^3
+#
+#   Buoyancy box = 3.4 x 1.2 x 0.5 m, centred at base_link (0, 0, -0.25),
+#   spanning z in [-0.50, 0.00] (hull bottom is at z = -0.49).
+#     waterplane area A = 3.4 * 1.2 = 4.08 m^2
+#     equilibrium draft  T ~= V / A ~= 0.10 m   -> boat sits TOUCHING the water,
+#       lower ~10 cm of hull wetted (it does NOT hover or sink).
+#     stability: BM = I_wp/V = (3.4*1.2^3/12)/0.42 ~= 1.17 m, CG ~0.40 m above
+#       the waterline -> GM ~= +0.7 m (upright, stable but not stiff).
+#
+#   Tuning:
+#     * sits too LOW  -> increase buoy_size_y/x or fluid_density
+#     * sits too HIGH -> decrease them
+#     * wider box     -> floats higher AND more roll-stable (bigger I_wp)
+#
+# DRAG: PolyhedraBuoyancyDrag also applies an isotropic linear+angular drag,
+# scaled by the submerged mass fraction. Kept LIGHT here; the main directional
+# 6-DOF damping comes from SimpleHydrodynamics (see hydrodynamics.yaml) so wind
+# drift is preserved.
+# =============================================================================
+buoyancy:
+  link_name: my_boat/base_link
+  fluid_level: 0.0          # m, VRX water surface is z = 0
+  fluid_density: 1000.0     # kg/m^3, fresh water (use 1025 for sea water)
+  linear_drag: 0.2          # isotropic linear drag (x ~86.5 kg wetted mass). Was 2.0: THIS FILE overrides
+                            # the xacro defaults, so the 2026-10-05 "match the real boat" edit (xacro only)
+                            # never took effect -- the sim kept ~323 u + 200 u^2 of surge drag and 554 N gave
+                            # 1.03 m/s (bag planner_route13, 2026-10-07). Now 0.2, as the xacro intends.
+  angular_drag: 1.0         # isotropic angular drag (light)
+  # Buoyancy box (approximates the wetted hull), base_link frame.
+  buoy_size_x: 3.4          # m, along hull (X)
+  buoy_size_y: 1.2          # m, beam (Y)
+  buoy_size_z: 0.5          # m, height (Z)
+  buoy_pose: "0 0 -0.25 0 0 0"   # box centre in base_link (x y z r p y)
+  # Wavefield topic published by the VRX world (shared with WAM-V -> waves).
+  wavefield_topic: /vrx/wavefield/parameters

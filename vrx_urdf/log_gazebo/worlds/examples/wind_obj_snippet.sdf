@@ -1,0 +1,53 @@
+<?xml version="1.0"?>
+<!--
+  wind_obj_snippet.sdf
+  ====================
+  Phase 4 wind integration for the existing VRX world.
+
+  The VRX wind plugin (vrx::USVWind) lives in the world file (for example
+  vrx_gz/worlds/sydney_regatta.sdf) and applies wind force only to the bodies
+  listed inside it. To make wind act on the floating_log, add the <wind_obj>
+  block below as a child of the existing USVWind <plugin> element, alongside
+  the wamv entry. Do not create a second USVWind plugin.
+
+  After editing the world, the relevant section should look like the example
+  further down (existing wamv entry kept, log entry added).
+-->
+
+<!-- ADD THIS BLOCK inside the existing <plugin name="vrx::USVWind"> element -->
+<wind_obj>
+  <name>floating_log</name>
+  <link_name>floating_log/base_link</link_name>
+  <coeff_vector>0.5 0.5 0.33</coeff_vector>
+</wind_obj>
+
+<!--
+  Resulting plugin (illustrative):
+
+  <plugin filename="libUSVWind.so" name="vrx::USVWind">
+    <wind_obj>
+      <name>wamv</name>
+      <link_name>wamv/base_link</link_name>
+      <coeff_vector>.5 .5 .33</coeff_vector>
+    </wind_obj>
+
+    <wind_obj>
+      <name>floating_log</name>
+      <link_name>floating_log/base_link</link_name>
+      <coeff_vector>0.5 0.5 0.33</coeff_vector>
+    </wind_obj>
+
+    <wind_direction>240</wind_direction>
+    <wind_mean_velocity>5.0</wind_mean_velocity>
+    <var_wind_gain_constants>0</var_wind_gain_constants>
+    <var_wind_time_constants>2</var_wind_time_constants>
+    <random_seed>10</random_seed>
+    <update_rate>10</update_rate>
+    <topic_wind_speed>/vrx/debug/wind/speed</topic_wind_speed>
+    <topic_wind_direction>/vrx/debug/wind/direction</topic_wind_direction>
+  </plugin>
+
+  Note on the link name: USVWind matches the FULLY SCOPED link name
+  model_name/link_name. If you spawn the log with -name floating_log, the
+  scoped link is floating_log/base_link, as shown above.
+-->

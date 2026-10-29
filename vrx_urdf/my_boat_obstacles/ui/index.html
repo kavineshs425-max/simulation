@@ -1,0 +1,1115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SIMU</title>
+<style>
+  :root {
+    --bg: #f3f5f8; --panel: #ffffff; --card: #f8fafc; --ink: #15202b; --ink2: #3b4a5a; --muted: #6b7a8a;
+    --line: #e1e6ec; --line2: #cfd7e0; --accent: #1a66e0; --accent-soft: #e8f0fe; --accent-ink: #fff;
+    --warn: #a15c00; --warn-soft: #fff4e5; --bad: #c62828; --bad-soft: #fdecec; --ok: #1e7d34; --ok-soft: #e8f6ec;
+    --sel: #f57c00; --ego: #1e8e3e; --moving: #1a66e0; --waiting: #7b8794; --stopped: #d93025;
+    --radius: 10px; --shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.10);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+    font: 14px/1.4 "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  #app { display: flex; height: 100%; }
+
+  /* ---------------- map */
+  #mapwrap { position: relative; flex: 1; min-width: 0; overflow: hidden; }
+  #map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
+  #map.panning { cursor: grabbing; } #map.wp, #map.place { cursor: crosshair; } #map.drag { cursor: move; }
+  .float { position: absolute; background: rgba(255,255,255,.96); border: 1px solid var(--line);
+    border-radius: var(--radius); box-shadow: var(--shadow); }
+  #brand { top: 14px; left: 14px; padding: 7px 14px 7px 12px; display: flex; align-items: center; gap: 10px; user-select: none; }
+  #brand .logo { font-weight: 800; letter-spacing: .28em; font-size: 18px; color: #0b8a9a; }
+  #brand .tag { font-size: 12px; color: var(--muted); border-left: 1px solid var(--line); padding-left: 10px; }
+  #mode { top: 14px; left: 50%; transform: translateX(-50%); padding: 7px 14px; font-size: 13px; display: none;
+    background: var(--ink); color: #fff; border-color: var(--ink); white-space: nowrap; }
+  #mode b { color: #ffd180; }
+  #zoom { top: 14px; right: 14px; display: flex; flex-direction: column; overflow: hidden; }
+  #zoom button { width: 36px; height: 36px; border: 0; border-bottom: 1px solid var(--line); background: transparent;
+    font-size: 18px; color: var(--ink2); cursor: pointer; }
+  #zoom button:last-child { border-bottom: 0; } #zoom button:hover { background: var(--accent-soft); color: var(--accent); }
+  #legend.min > :not(#legtog) { display: none; }
+  #legtog { grid-column: 1 / -1; justify-self: end; border: 0; background: none; color: var(--muted); cursor: pointer;
+    font: inherit; font-size: 11.5px; padding: 0; margin: -2px 0 2px; }
+  #legend.min #legtog { margin: 0; }
+  #legend { left: 14px; bottom: 14px; padding: 8px 12px; font-size: 12px; color: var(--ink2); display: grid;
+    grid-template-columns: auto auto; gap: 3px 14px; }
+  #legend span { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  #legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  #legend .line { width: 18px; height: 0; border-top: 2px solid var(--moving); border-radius: 0; }
+  #legend .dash { width: 18px; height: 10px; border: 1.5px dashed var(--ink2); background: transparent; }
+  #legend .trk { width: 14px; height: 10px; border-radius: 2px; background: transparent;
+    border: 2px solid; border-image: linear-gradient(90deg, #f2541b, #1bb6f2, #9b3ff2) 1; }
+  #legend .pred { width: 18px; height: 0; border-top: 2px dashed #9b3ff2; border-radius: 0; }
+  #trkrow { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; margin-top: 4px; padding-top: 5px;
+    border-top: 1px solid var(--line); }
+  #trkrow b { color: var(--ink); font-weight: 700; }
+  #trkrow label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+  #trkinfo { grid-column: 1 / -1; color: var(--muted); font-variant-numeric: tabular-nums; }
+  #vmrow { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; margin-top: 4px; padding-top: 5px;
+    border-top: 1px solid var(--line); flex-wrap: wrap; }
+  #vmrow b { color: var(--ink); font-weight: 700; } #vmrow label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+  #vmsub { display: flex; gap: 10px; } #vmsum { grid-column: 1 / -1; color: var(--muted); font-variant-numeric: tabular-nums; }
+  #legend .noent { background: repeating-linear-gradient(135deg, rgba(211,47,47,.6) 0 2px, transparent 2px 5px); border: 1.5px solid #d32f2f; }
+  #legend .shoal { background: repeating-linear-gradient(135deg, rgba(198,40,40,.55) 0 1.5px, rgba(40,110,200,.3) 1.5px 4px); border: 1px dashed #c62828; }
+  #legend .spd { width: 13px; height: 13px; border-radius: 50%; background: #fff; border: 2.5px solid #d32f2f; }
+  #legend .ctn { width: 0; height: 0; border-radius: 0; border-left: 7px solid transparent; border-right: 7px solid transparent; border-bottom: 12px solid #f57c00; }
+  #legend .oneway { width: 18px; height: 10px; border-radius: 0; background: none; color: #0d47a1; font-weight: 800; font-size: 13px; line-height: 10px; }
+  #vminfo { display: none; max-width: 320px; padding: 9px 11px; font-size: 12px; pointer-events: none; z-index: 5; }
+  #vminfo .vmh { font-size: 11px; letter-spacing: .05em; color: var(--muted); text-transform: uppercase; }
+  #vminfo .vmn { font-weight: 700; font-size: 14px; margin: 1px 0 3px; } #vminfo .vmd { color: var(--ink2); margin-bottom: 4px; }
+  #vminfo table { border-collapse: collapse; width: 100%; margin-top: 4px; } #vminfo td { padding: 1px 4px; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  #vminfo td:first-child { color: var(--muted); width: 45%; }
+  #vminfo .vmbad { color: var(--bad); font-weight: 700; margin: 3px 0; } #vminfo .vmok { color: var(--ok); font-weight: 600; margin: 3px 0; }
+  #vminfo .vmwarn { color: var(--warn); font-weight: 600; margin: 3px 0; }
+  #r1row { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; margin-top: 4px; padding-top: 5px;
+    border-top: 1px solid var(--line); } #r1row b { color: var(--ink); font-weight: 700; }
+  #r1row label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+  #r1sum { grid-column: 1 / -1; color: var(--muted); font-variant-numeric: tabular-nums; }
+  #cursor { grid-column: 1 / -1; margin-top: 4px; padding-top: 5px; border-top: 1px solid var(--line);
+    color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  /* ---------------- panel */
+  #panel { width: 344px; flex: none; background: var(--panel); border-left: 1px solid var(--line);
+    display: flex; flex-direction: column; }
+  #pbody { flex: 1; overflow-y: auto; padding: 16px; }
+  .head { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 12px; }
+  .head .t { flex: 1; min-width: 0; }
+  .head h2 { margin: 0; font-size: 17px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+  .chip { font-size: 11.5px; padding: 1px 8px; border-radius: 999px; background: var(--card); border: 1px solid var(--line);
+    color: var(--ink2); white-space: nowrap; }
+  .chip.st { display: inline-flex; align-items: center; gap: 5px; }
+  .chip.st::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .chip.moving { color: var(--moving); } .chip.waiting, .chip.still { color: var(--waiting); }
+  .chip.stopped { color: var(--stopped); } .chip.new { color: var(--warn); }
+  .iconbtn { width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line); background: #fff;
+    color: var(--ink2); cursor: pointer; font-size: 15px; display: grid; place-items: center; flex: none; }
+  .iconbtn:hover { border-color: var(--line2); background: var(--card); }
+  .iconbtn.danger:hover { color: var(--bad); border-color: #f1b4b4; background: var(--bad-soft); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 11px 12px; margin-bottom: 10px; }
+  .card h3 { margin: 0 0 8px; font-size: 11.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); font-weight: 700;
+    display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .card h3 small { text-transform: none; letter-spacing: 0; font-weight: 500; text-align: right; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .field { position: relative; display: flex; align-items: center; }
+  .field .lbl { position: absolute; left: 9px; font-weight: 700; color: var(--muted); font-size: 12px; pointer-events: none; }
+  .field .unit { position: absolute; right: 10px; color: var(--muted); font-size: 12px; pointer-events: none; }
+  input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+  input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  .field input { width: 100%; padding: 7px 36px 7px 26px; border: 1px solid var(--line2); border-radius: 8px;
+    font: inherit; background: #fff; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .field input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+  #dialrow { display: flex; align-items: center; gap: 12px; }
+  #dial { width: 128px; height: 128px; cursor: grab; touch-action: none; flex: none; }
+  #dial:active { cursor: grabbing; }
+  #orimeta { flex: 1; min-width: 0; }
+  #orimeta .field input { padding-left: 10px; padding-right: 24px; }
+  .note { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.35; }
+  .seg { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line2); border-radius: 8px; overflow: hidden; background: #fff; }
+  .seg button { border: 0; border-right: 1px solid var(--line); background: transparent; padding: 7px 2px; font: inherit; font-size: 12.5px;
+    color: var(--ink2); cursor: pointer; }
+  .seg button:last-child { border-right: 0; } .seg button:hover { background: var(--accent-soft); }
+  .seg button.on { background: var(--accent); color: #fff; font-weight: 600; }
+  .velrow { display: flex; align-items: center; gap: 10px; margin-top: 2px; }
+  .velrow input[type=range] { flex: 1; accent-color: var(--accent); min-width: 0; }
+  .velrow .field { width: 118px; flex: none; }
+  .velrow .field input { padding-left: 10px; }
+  #turnrow { margin-top: 8px; }
+  #turnrow .field input { padding-left: 10px; }
+  .tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .switch { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink2); cursor: pointer; user-select: none; }
+  .switch input { accent-color: var(--accent); width: 16px; height: 16px; }
+  button.btn { font: inherit; font-weight: 600; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line2);
+    background: #fff; color: var(--ink); cursor: pointer; }
+  button.btn:hover:not(:disabled) { border-color: #9fb0c2; background: var(--card); }
+  button.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  button.btn.primary:hover:not(:disabled) { background: #1557c2; }
+  button.btn.on { background: var(--sel); border-color: var(--sel); color: #fff; }
+  button.btn.small { padding: 6px 10px; font-size: 13px; }
+  button.btn.ghost { background: transparent; }
+  .dim { opacity: .38; pointer-events: none; filter: grayscale(.4); }
+  button:disabled { opacity: .45; cursor: default; }
+
+  /* scene view */
+  .sec { font-size: 11.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); font-weight: 700; margin: 4px 0 8px;
+    display: flex; justify-content: space-between; align-items: center; }
+  .sec small { text-transform: none; letter-spacing: 0; font-weight: 500; }
+  .list { display: flex; flex-direction: column; gap: 2px; margin-bottom: 14px; max-height: 34vh; overflow-y: auto;
+    border: 1px solid var(--line); border-radius: var(--radius); padding: 4px; }
+  .item { display: flex; align-items: center; gap: 9px; padding: 6px 8px; border-radius: 8px; cursor: pointer; }
+  .item:hover { background: var(--card); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .item .nm { font-weight: 600; } .item .md { color: var(--muted); font-size: 12px; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
+  .pal { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 4px; }
+  .pcard { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;
+    background: #fff; min-width: 0; }
+  .pcard:hover { border-color: var(--accent); background: var(--accent-soft); }
+  .pcard.on { border-color: var(--sel); box-shadow: 0 0 0 2px #ffe0b2 inset; }
+  .sw { width: 18px; height: 18px; border-radius: 5px; flex: none; border: 1px solid rgba(0,0,0,.12); }
+  .sw.round { border-radius: 50%; }
+  .pcard .pn { font-size: 12.5px; font-weight: 600; line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical; overflow: hidden; }
+  .pcard .ps { font-size: 11px; color: var(--muted); }
+  .pgroup { font-size: 12px; font-weight: 600; color: var(--ink2); margin: 10px 0 5px; }
+
+  /* tabs: obstacles | environment */
+  #tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin: 12px 16px 0; border: 1px solid var(--line2);
+    border-radius: 9px; overflow: hidden; flex: none; }
+  #tabs button { border: 0; background: #fff; padding: 8px 4px; font: inherit; font-weight: 600; color: var(--ink2); cursor: pointer; }
+  #tabs button + button { border-left: 1px solid var(--line2); }
+  #tabs button.on { background: var(--ink); color: #fff; }
+
+  /* footer */
+  #foot { border-top: 1px solid var(--line); padding: 12px 16px 12px; background: var(--panel); }
+  #badges { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; min-height: 22px; }
+  .badge { font-size: 11.5px; padding: 2px 9px; border-radius: 999px; border: 1px solid; font-weight: 600; }
+  .badge.warn { background: var(--warn-soft); color: var(--warn); border-color: #ffd699; }
+  .badge.ok { background: var(--ok-soft); color: var(--ok); border-color: #b6e2c1; }
+  .badge.info { background: var(--accent-soft); color: var(--accent); border-color: #c6dafc; }
+  .badge.bad { background: var(--bad-soft); color: var(--bad); border-color: #f5b5b5; cursor: help; }
+  .warnbox { background: var(--bad-soft); border: 1px solid #f5b5b5; color: var(--bad); border-radius: 8px;
+    padding: 7px 9px; font-size: 12.5px; margin-bottom: 10px; }
+  .acts { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 8px; }
+  .acts2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+  #log { margin-top: 10px; max-height: 108px; overflow-y: auto; font-size: 12px; line-height: 1.35; }
+  #log div { padding: 3px 0; border-top: 1px dashed var(--line); color: var(--ink2); }
+  #log div:first-child { border-top: 0; }
+  #log .t { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 6px; }
+  #log .bad { color: var(--bad); } #log .warn { color: var(--warn); } #log .ok { color: var(--ok); }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="mapwrap">
+    <canvas id="map"></canvas>
+    <div id="brand" class="float"><span class="logo">SIMU</span><span class="tag">obstacles &amp; environment</span></div>
+    <div id="mode" class="float"></div>
+    <div id="vminfo" class="float"></div>
+    <div id="zoom" class="float">
+      <button id="zin" title="Zoom in">+</button>
+      <button id="zout" title="Zoom out">&minus;</button>
+      <button id="zfit" title="Fit the whole scenario">&#8962;</button>
+    </div>
+    <div id="legend" class="float">
+      <button id="legtog" title="hide / show the legend">hide legend &#9662;</button>
+      <span><i style="background:var(--moving)"></i>moving</span>
+      <span><i style="background:var(--ego)"></i>my_boat</span>
+      <span><i style="background:var(--waiting)"></i>waiting</span>
+      <span><i class="line"></i>planned path</span>
+      <span><i style="background:var(--stopped)"></i>stopped (hit)</span>
+      <span><i class="dash"></i>start (edited)</span>
+      <div id="trkrow"><b>Tracker</b>
+        <label><input type="checkbox" id="showtracks" checked> tracks</label>
+        <label><input type="checkbox" id="showtrails" checked> trails</label>
+        <label><input type="checkbox" id="showtent"> tentative</label></div>
+      <span><i class="trk"></i>track (colour = track id)</span>
+      <span><i class="pred"></i>predicted path, 1 dot/s</span>
+      <div id="trkinfo">no tracks yet -- is marine_tracker running?</div>
+      <div id="vmrow"><b>Vector map</b>
+        <label><input type="checkbox" id="showvmap" checked> on</label>
+        <span id="vmsub"><label><input type="checkbox" id="vmdepth" checked> depth</label>
+        <label><input type="checkbox" id="vmrules" checked> rules &amp; limits</label>
+        <label><input type="checkbox" id="vmlabels" checked> labels</label></span></div>
+      <span><i class="noent"></i>no-go area</span>
+      <span><i class="shoal"></i>too shallow for us</span>
+      <span><i class="spd"></i>speed limit zone</span>
+      <span><i class="ctn"></i>caution &middot; &#10005; obstruction</span>
+      <span><i class="oneway">&rsaquo;&rsaquo;</i>one way / keep starboard</span>
+      <span style="color:var(--muted)">hover anything for details</span>
+      <div id="vmsum">&nbsp;</div>
+      <div id="r1row"><b>Planner 1 map</b>
+        <label><input type="checkbox" id="showr1" checked> on</label>
+        <label><input type="checkbox" id="r1graph" checked> canal graph</label></div>
+      <span><i style="background:rgba(30,90,200,.6)"></i>too shallow now</span>
+      <span><i style="background:#282828"></i>structure</span>
+      <span><i style="background:#f57c00"></i>bridge too low</span>
+      <span><i style="background:rgba(211,47,47,.5)"></i>no-go (active now)</span>
+      <span><i style="background:#c800c8"></i>closure</span>
+      <span><i style="background:#c81414"></i>obstruction</span>
+      <div id="r1sum">&nbsp;</div>
+      <div id="cursor">&nbsp;</div>
+    </div>
+  </div>
+
+  <div id="panel">
+    <div id="tabs"><button data-tab="obstacles" class="on">Obstacles</button><button data-tab="environment">Environment</button></div>
+    <div id="pbody">
+      <!-- the Environment tab (env.js) -->
+      <div id="envpanel" style="display:none"></div>
+      <!-- nothing selected: the scene + the add palette -->
+      <div id="scene">
+        <div class="sec"><span>In the scene</span><small id="count">&nbsp;</small></div>
+        <div class="list" id="objlist"></div>
+        <div class="sec"><span>Add obstacle</span><small>pick one, then click the map</small></div>
+        <div id="palette"></div>
+      </div>
+
+      <!-- something selected -->
+      <div id="sel" style="display:none">
+        <div class="head">
+          <button class="iconbtn" id="back" title="Back to the scene (Esc)">&#8249;</button>
+          <div class="t"><h2 id="selname">&nbsp;</h2><div class="chips" id="selchips"></div></div>
+          <button class="iconbtn danger" id="del" title="Delete this obstacle (Del)">&#128465;</button>
+        </div>
+
+        <div id="selwarn"></div>
+        <div class="card">
+          <h3>Position <small>world metres</small></h3>
+          <div class="pair">
+            <div class="field"><span class="lbl">x</span><input id="px" type="number" step="0.5"><span class="unit">E</span></div>
+            <div class="field"><span class="lbl">y</span><input id="py" type="number" step="0.5"><span class="unit">N</span></div>
+          </div>
+        </div>
+
+        <div class="card" id="oricard">
+          <h3>Orientation <small>drag the compass &middot; Shift snaps 15&deg;</small></h3>
+          <div id="dialrow">
+            <canvas id="dial" width="256" height="256"></canvas>
+            <div id="orimeta">
+              <div class="field"><input id="phead" type="number" step="1"><span class="unit">&deg;</span></div>
+              <div class="note" id="bearing">&nbsp;</div>
+              <div class="note" id="orinote">&nbsp;</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" id="motioncard">
+          <h3>Motion</h3>
+          <div class="seg" id="seg">
+            <button data-t="static">Static</button><button data-t="constant_velocity">Straight</button>
+            <button data-t="constant_turn">Turn</button><button data-t="waypoints">Path</button>
+          </div>
+          <div id="turnrow"><div class="field"><input id="pturn" type="number" step="0.5"><span class="unit">&deg;/s</span></div>
+            <div class="note">turn rate &middot; + turns left (counter-clockwise)</div></div>
+        </div>
+
+        <div class="card" id="velcard">
+          <h3>Velocity <small id="kn">&nbsp;</small></h3>
+          <div class="velrow">
+            <input id="pvr" type="range" min="0" max="6" step="0.1">
+            <div class="field"><input id="pv" type="number" step="0.1" min="0"><span class="unit">m/s</span></div>
+          </div>
+        </div>
+
+        <div class="card" id="wpcard">
+          <h3>Waypoints <small id="wpinfo">&nbsp;</small></h3>
+          <div class="tools">
+            <button class="btn small" id="wpbtn">Waypoint</button>
+            <label class="switch"><input type="checkbox" id="wploop"> loop</label>
+            <button class="btn small ghost" id="wpclear">Clear path</button>
+          </div>
+          <div class="note">Click the map to add points &middot; drag a point to move it &middot; right-click removes the last &middot; Esc when done.</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="foot">
+      <div id="badges"></div>
+      <div class="acts">
+        <button class="btn primary" id="bupdate" title="Apply every change to the running simulation">Update</button>
+        <button class="btn" id="bsave" title="Write the obstacles to config/obstacles.yaml">Save</button>
+        <button class="btn" id="bclear" title="Throw away changes not yet applied, and reset to the start">Clear</button>
+      </div>
+      <div class="acts2">
+        <button class="btn" id="brun" title="Start every obstacle moving (again = restart)">&#9654;&nbsp; Run</button>
+        <button class="btn" id="breset" title="Obstacles back to their start, holding">&#8634;&nbsp; Reset</button>
+      </div>
+      <div id="log"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ================================================================ state
+const KNOT = 1852 / 3600;
+let MAP = null, mapImg = null;          // land map + its placement
+let MODELS = {};                        // model name -> {l,w,h,class,colour,group,...}
+let applied = null;                     // the configuration the sim runs (normalised)
+let draft = null;                       // what the user is editing (normalised)
+let egoDraft = null;                    // my_boat MODEL-ORIGIN pose once moved {x,y,heading}
+let live = { obstacles: [], boat: null, running: false, tau: -1 };
+let sel = null;                         // {kind:'obstacle', name} | {kind:'ego'}
+let wpMode = false, placeModel = null;
+let configFile = '';
+let tracks = null, tracksAt = 0;        // marine_tracker's tracks, already in Gazebo world coordinates
+const view = { cx: -528, cy: 186, scale: 2.0 };   // world centre, pixels per metre
+
+const $ = (id) => document.getElementById(id);
+const canvas = $('map'), ctx = canvas.getContext('2d');
+const deep = (o) => JSON.parse(JSON.stringify(o));
+const rad = (d) => d * Math.PI / 180, deg = (r) => r * 180 / Math.PI;
+const wrapDeg = (d) => ((d % 360) + 540) % 360 - 180;
+const COL = {};
+// the Environment editor lives in env.js (loaded after this script)
+const envOn = () => typeof ENV !== 'undefined' && ENV.active;
+function envCall(fn, ...a) { return typeof window[fn] === 'function' ? window[fn](...a) : undefined; }
+function loadColours() {
+  const cs = getComputedStyle(document.documentElement);
+  ['moving', 'waiting', 'stopped', 'ego', 'sel', 'accent', 'ink', 'ink2'].forEach((k) => COL[k] = cs.getPropertyValue('--' + k).trim());
+}
+
+// ================================================================ config model
+// The draft keeps the file's schema, normalised so each thing has one place:
+// start {x,y,heading_deg}; speed (m/s) at top level; a path's first point IS its start.
+function normalise(doc) {
+  doc = deep(doc || {});
+  doc.obstacles = (doc.obstacles || []).map((o) => {
+    o = deep(o);
+    const m = o.motion = o.motion || { type: 'static' };
+    m.type = m.type || 'static';
+    let v = o.speed;
+    if (o.speed_kn != null) { v = o.speed_kn * KNOT; delete o.speed_kn; }
+    if (m.speed != null) { v = m.speed; delete m.speed; }
+    if (m.speed_kn != null) { v = m.speed_kn * KNOT; delete m.speed_kn; }
+    if (m.type !== 'static') o.speed = +(+(v || 0)).toFixed(3); else delete o.speed;
+    if (m.type === 'waypoints') {
+      m.points = (m.points || []).map((p) => [+p[0], +p[1]]);
+      if (!o.start && m.points.length) { const p = m.points.shift(); o.start = { x: p[0], y: p[1] }; }
+    }
+    o.start = o.start || { x: 0, y: 0 };
+    o.start.x = +o.start.x; o.start.y = +o.start.y;
+    if (o.start.heading_deg != null) o.start.heading_deg = +o.start.heading_deg;
+    return o;
+  });
+  return doc;
+}
+function forSim(doc) {            // what goes to the spawner / file
+  const d = deep(doc);
+  d.obstacles.forEach((o) => {
+    if (o.motion.type === 'waypoints') { delete o.start.heading_deg; if (o.motion.loop === false) delete o.motion.loop; }
+    if (o.motion.type !== 'constant_turn') delete o.motion.turn_rate_deg_s;
+    if (o.motion.type !== 'waypoints') delete o.motion.stops;
+    if (o.motion.type === 'static') { delete o.speed; delete o.motion.points; delete o.motion.loop; }
+    o.start.x = +o.start.x.toFixed(3); o.start.y = +o.start.y.toFixed(3);
+    if (o.start.heading_deg != null) o.start.heading_deg = +(+o.start.heading_deg).toFixed(2);
+    if (o.motion.points) o.motion.points = o.motion.points.map((p) => [+p[0].toFixed(2), +p[1].toFixed(2)]);
+  });
+  return d;
+}
+const obByName = (doc, n) => doc && doc.obstacles.find((o) => o.name === n);
+const liveOb = (n) => live.obstacles.find((o) => o.name === n);
+function dims(o) {                // hull size: live, else the model catalogue
+  const lv = liveOb(o.name); if (lv) return [lv.l, lv.w];
+  const m = MODELS[o.model]; return m ? [m.l, m.w] : [4, 2];
+}
+function clsOf(o) { return o.class || (MODELS[o.model] && MODELS[o.model].class) || 'unknown'; }
+function shapeOf(cls) {
+  if (['buoy', 'marker', 'pillar'].includes(cls)) return 'round';
+  if (['boat', 'ship', 'kayak'].includes(cls)) return 'hull';
+  return 'rect';
+}
+function startHeading(o) {        // a path's heading at the start = its first leg
+  const m = o.motion;
+  if (m.type === 'waypoints' && m.points && m.points.length) {
+    const p = m.points[0]; return Math.atan2(p[1] - o.start.y, p[0] - o.start.x);
+  }
+  return rad(o.start.heading_deg || 0);
+}
+function previewPath(o) {         // preview only; the spawner has the exact model
+  const m = o.motion, v = +(o.speed || 0), s = o.start;
+  if (m.type === 'waypoints') {
+    const pts = [[s.x, s.y], ...(m.points || [])];
+    if (m.loop && pts.length > 2) pts.push([s.x, s.y]);
+    return pts;
+  }
+  if (m.type === 'constant_velocity') {
+    const h = rad(s.heading_deg || 0), L = Math.max(v * 120, 5);
+    return [[s.x, s.y], [s.x + L * Math.cos(h), s.y + L * Math.sin(h)]];
+  }
+  if (m.type === 'constant_turn') {
+    const r = rad(m.turn_rate_deg_s || 0), h0 = rad(s.heading_deg || 0), pts = [];
+    for (let t = 0; t <= 120; t += 1) {
+      if (Math.abs(r) < 1e-9) pts.push([s.x + v * t * Math.cos(h0), s.y + v * t * Math.sin(h0)]);
+      else { const k = v / r, h = h0 + r * t; pts.push([s.x + k * (Math.sin(h) - Math.sin(h0)), s.y - k * (Math.cos(h) - Math.cos(h0))]); }
+    }
+    return pts;
+  }
+  return [];
+}
+
+// ================================================================ view transform
+const W = () => canvas.width / devicePixelRatio, H = () => canvas.height / devicePixelRatio;
+function w2s(x, y) { return [W() / 2 + (x - view.cx) * view.scale, H() / 2 - (y - view.cy) * view.scale]; }
+function s2w(px, py) { return [view.cx + (px - W() / 2) / view.scale, view.cy - (py - H() / 2) / view.scale]; }
+function resize() {
+  const r = canvas.getBoundingClientRect();
+  canvas.width = Math.round(r.width * devicePixelRatio); canvas.height = Math.round(r.height * devicePixelRatio);
+  draw();
+}
+function zoomAt(px, py, f) {
+  const [wx, wy] = s2w(px, py);
+  view.scale = Math.min(80, Math.max(0.15, view.scale * f));
+  const [nx, ny] = s2w(px, py); view.cx += wx - nx; view.cy += wy - ny; draw();
+}
+function fitScene() {
+  const pts = [];
+  if (draft) draft.obstacles.forEach((o) => { pts.push([o.start.x, o.start.y]); previewPath(o).forEach((p) => pts.push(p)); });
+  if (live.boat) pts.push([live.boat.x, live.boat.y]);
+  if (!pts.length) { view.cx = -528; view.cy = 186; view.scale = 2; draw(); return; }
+  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  view.cx = (x0 + x1) / 2; view.cy = (y0 + y1) / 2;
+  view.scale = Math.min(20, Math.max(0.15, 0.82 * Math.min((W() - 40) / Math.max(x1 - x0, 20), (H() - 120) / Math.max(y1 - y0, 20))));
+  draw();
+}
+
+// ================================================================ drawing
+function outline(shape, x, y, h, l, w) {
+  const c = Math.cos(h), s = Math.sin(h);
+  const tf = (dx, dy) => [x + c * dx - s * dy, y + s * dx + c * dy];
+  if (shape === 'hull') return [tf(-l / 2, w / 2), tf(l * 0.18, w / 2), tf(l / 2, 0), tf(l * 0.18, -w / 2), tf(-l / 2, -w / 2)];
+  return [tf(l / 2, w / 2), tf(l / 2, -w / 2), tf(-l / 2, -w / 2), tf(-l / 2, w / 2)];
+}
+function path(pts, close) {
+  ctx.beginPath();
+  pts.forEach(([x, y], i) => { const [sx, sy] = w2s(x, y); i ? ctx.lineTo(sx, sy) : ctx.moveTo(sx, sy); });
+  if (close) ctx.closePath();
+}
+// one object; never smaller than a few pixels so it stays visible and clickable
+function glyph(shape, x, y, h, l, w, fill, stroke, lw, dash, halo) {
+  const minM = 7 / view.scale;
+  if (shape === 'round') {
+    const r = Math.max(Math.max(l, w) / 2, minM / 2), [sx, sy] = w2s(x, y), rp = r * view.scale;
+    if (halo) { ctx.beginPath(); ctx.arc(sx, sy, rp + 6, 0, 2 * Math.PI); ctx.fillStyle = 'rgba(245,124,0,.28)'; ctx.fill(); }
+    ctx.beginPath(); ctx.arc(sx, sy, rp, 0, 2 * Math.PI);
+  } else {
+    const pts = outline(shape, x, y, h, Math.max(l, minM), Math.max(w, minM * 0.55));
+    if (halo) { path(pts, true); ctx.lineWidth = 9; ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(245,124,0,.30)'; ctx.stroke(); }
+    path(pts, true);
+  }
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.setLineDash(dash || []); ctx.lineWidth = lw || 1.2; ctx.strokeStyle = stroke; ctx.stroke(); ctx.setLineDash([]); }
+}
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+let labelBoxes = [];
+function label(text, x, y, colour, bold) {
+  const [sx, sy] = w2s(x, y);
+  ctx.font = `${bold ? 700 : 600} 11px Inter, system-ui, sans-serif`;
+  const tw = ctx.measureText(text).width;
+  const box = [sx + 9, sy - 21, sx + 19 + tw, sy - 4];
+  if (!bold && labelBoxes.some((b) => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1])) return;
+  labelBoxes.push(box);
+  ctx.fillStyle = 'rgba(255,255,255,.9)'; roundRect(sx + 9, sy - 21, tw + 10, 17, 5); ctx.fill();
+  ctx.fillStyle = colour; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(text, sx + 14, sy - 12.5);
+}
+function arrowHead(x0, y0, x1, y1, colour) {
+  const [a, b] = w2s(x0, y0), [c, d] = w2s(x1, y1), ang = Math.atan2(d - b, c - a);
+  ctx.beginPath(); ctx.moveTo(c, d);
+  ctx.lineTo(c - 11 * Math.cos(ang - 0.42), d - 11 * Math.sin(ang - 0.42));
+  ctx.lineTo(c - 11 * Math.cos(ang + 0.42), d - 11 * Math.sin(ang + 0.42));
+  ctx.closePath(); ctx.fillStyle = colour; ctx.fill();
+}
+const statusCol = (s) => s === 'moving' ? COL.moving : s === 'stopped' ? COL.stopped : COL.waiting;
+const isSel = (o) => !!(sel && sel.kind === 'obstacle' && sel.name === o.name);
+
+function draw() {
+  ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  ctx.fillStyle = '#e2d6ba'; ctx.fillRect(0, 0, W(), H());
+  if (mapImg && MAP) {
+    const [sx, sy] = w2s(MAP.x0, MAP.y0 + MAP.h * MAP.res);
+    ctx.imageSmoothingEnabled = view.scale < 2;
+    ctx.drawImage(mapImg, sx, sy, MAP.w * MAP.res * view.scale, MAP.h * MAP.res * view.scale);
+  }
+  drawGrid();
+  if (MAP && view.scale < 1.2) {
+    ctx.font = 'italic 600 12px Inter, system-ui'; ctx.fillStyle = 'rgba(21,32,43,.45)'; ctx.textAlign = 'center';
+    MAP.lakes.forEach((k) => { const [x, y] = w2s(k.x, k.y); ctx.fillText(k.name, x, y); });
+  }
+  labelBoxes = [];
+  envCall('envDraw');                       // canals, land, docks, bridges -- under the obstacles
+  envCall('vmapDraw');                      // the vector map's information layer (vmap.js)
+  envCall('r1Draw');                        // route planner 1's compiled map (route1.js)
+  if (!draft) { envCall('rgDraw'); return; }   // the route never depends on the obstacle scenario
+
+  // planned paths (the DRAFT = what Update would apply)
+  const bad = flagged();
+  draft.obstacles.forEach((o) => {
+    const pts = previewPath(o); if (pts.length < 2) return;
+    const s = isSel(o), c = bad.has(o.name) ? COL.stopped : s ? COL.sel : 'rgba(26,102,224,.55)';
+    path(pts); ctx.lineWidth = s ? 2.6 : 1.6; ctx.strokeStyle = c; ctx.lineJoin = 'round';
+    ctx.setLineDash(o.motion.type === 'waypoints' ? [] : [7, 6]); ctx.stroke(); ctx.setLineDash([]);
+    const n = pts.length; arrowHead(pts[n - 2][0], pts[n - 2][1], pts[n - 1][0], pts[n - 1][1], c);
+    if (o.motion.type === 'waypoints' && s) {
+      (o.motion.points || []).forEach(([x, y], i) => {
+        const [sx, sy] = w2s(x, y);
+        ctx.beginPath(); ctx.arc(sx, sy, 7.5, 0, 2 * Math.PI); ctx.fillStyle = '#fff'; ctx.fill();
+        ctx.lineWidth = 2.2; ctx.strokeStyle = COL.sel; ctx.stroke();
+        ctx.fillStyle = COL.sel; ctx.font = '700 9.5px Inter, system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(String(i + 1), sx, sy + 0.5);
+      });
+    }
+  });
+
+  // start poses (draft): dashed where it differs from the live pose, and for the selection
+  draft.obstacles.forEach((o) => {
+    const [l, w] = dims(o), lv = liveOb(o.name), sh = shapeOf(clsOf(o)), s = isSel(o);
+    const moved = !lv || Math.hypot(lv.x - o.start.x, lv.y - o.start.y) > 0.3 || live.running;
+    if (moved || s) glyph(sh, o.start.x, o.start.y, startHeading(o), l, w, !lv ? 'rgba(245,124,0,.20)' : null,
+                          s ? COL.sel : COL.ink2, s ? 2 : 1.2, [5, 4], s && !lv);
+  });
+
+  // live obstacles (shapes first, then labels: selected first, then movers, then the rest)
+  live.obstacles.forEach((o) => {
+    const d = obByName(draft, o.name), s = !!(d && isSel(d));
+    glyph(shapeOf(o.class), o.x, o.y, o.heading, o.l, o.w, statusCol(o.status), 'rgba(21,32,43,.85)', 1, null, s);
+  });
+  drawTracks();
+  const selName = sel && sel.kind === 'obstacle' ? sel.name : null;
+  const ranked = [...live.obstacles].sort((a, b) => (b.name === selName) - (a.name === selName) || (b.speed > 0.01) - (a.speed > 0.01));
+  if (live.boat) label(live.boat.name, live.boat.x, live.boat.y, sel && sel.kind === 'ego' ? COL.sel : '#0f5d24', true);
+  ranked.forEach((o) => {
+    const s = o.name === selName;
+    if (view.scale > 0.55 || s) label(o.name + (o.speed > 0.01 ? `  ${o.speed.toFixed(1)} m/s` : ''), o.x, o.y, s ? COL.sel : COL.ink, s);
+  });
+  draft.obstacles.filter((o) => !liveOb(o.name)).forEach((o) => label(o.name + '  (new)', o.start.x, o.start.y, COL.sel, isSel(o)));
+
+  // my_boat: live (solid) + where Update would put it (dashed)
+  const b = live.boat;
+  if (b) {
+    const [cx, cy] = egoBox(b), s = !!(sel && sel.kind === 'ego');
+    glyph('hull', cx, cy, b.heading, b.l, b.w, COL.ego, '#0f3d1d', 1.2, null, s);
+    if (egoDraft) { const [ex, ey] = egoBox({ ...egoDraft, offset_x: b.offset_x }); glyph('hull', ex, ey, egoDraft.heading, b.l, b.w, null, COL.ego, 2, [5, 4]); }
+  }
+  // what a click would place
+  if (placeModel && hoverWorld && MODELS[placeModel]) {
+    const m = MODELS[placeModel];
+    glyph(shapeOf(m.class), hoverWorld[0], hoverWorld[1], 0, m.l, m.w, 'rgba(245,124,0,.35)', COL.sel, 1.5, [4, 3]);
+  }
+  envCall('envDrawOverlay');
+  envCall('rgDraw');                        // route planner 1: the route + the goals being placed (route_goal.js)
+  drawScale();
+}
+// ---------------------------------------------------------------- tracker overlay
+function trackLabel(text, x, y, colour) {
+  const [sx, sy] = w2s(x, y);
+  ctx.font = '700 10.5px Inter, system-ui, sans-serif';
+  const tw = ctx.measureText(text).width, box = [sx - tw - 19, sy + 5, sx - 9, sy + 21];
+  if (labelBoxes.some((b) => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1])) return;
+  labelBoxes.push(box);
+  ctx.fillStyle = colour; roundRect(box[0], box[1], tw + 10, 16, 5); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(text, box[0] + 5, box[1] + 8.5);
+}
+function drawTracks() {
+  if (!tracks || !$('showtracks').checked) return;
+  const stale = performance.now() - tracksAt > 2000, px = view.scale;
+  const showTent = $('showtent').checked, showTrail = $('showtrails').checked;
+  tracks.tracks.forEach((t) => {
+    const tent = t.status === 'tentative', coast = t.status === 'coasting';
+    if (tent && !showTent) return;
+    const c = t.colour, base = stale ? 0.3 : tent ? 0.5 : coast ? 0.65 : 1;
+    ctx.globalAlpha = base;
+    if (showTrail && t.trail.length > 1) {                     // where it has been
+      path(t.trail); ctx.lineWidth = 2; ctx.strokeStyle = c; ctx.globalAlpha = base * 0.45; ctx.lineJoin = 'round'; ctx.stroke();
+      ctx.globalAlpha = base;
+    }
+    if (t.pred.length && t.speed > 0.3) {                      // where the filter expects it
+      path([[t.x, t.y], ...t.pred.map((p) => [p[0], p[1]])]);
+      ctx.setLineDash([7, 5]); ctx.lineWidth = 2.2; ctx.strokeStyle = c; ctx.stroke(); ctx.setLineDash([]);
+      t.pred.forEach((p) => { const [sx, sy] = w2s(p[0], p[1]); ctx.beginPath(); ctx.arc(sx, sy, 2.6, 0, 2 * Math.PI); ctx.fillStyle = c; ctx.fill(); });
+      // GHOST HULLS where it will be at half the horizon and at its end: the tracked box (its real
+      // length, beam and heading, bow toward its course), inside the filter's 2-sigma ELLIPSE of
+      // where that centre may be -- not one round blob of the largest axis
+      const n = t.pred.length, e = t.pred[n - 1];
+      const hdg = Math.cos(t.yaw - t.course) < 0 ? t.yaw + Math.PI : t.yaw;
+      [Math.max(0, Math.round(n / 2) - 1), n - 1].forEach((k, i) => {
+        const p = t.pred[k], [qx, qy] = w2s(p[0], p[1]);
+        const a = p.length > 5 ? p[3] : p[2], b = p.length > 5 ? p[4] : p[2], ang = p.length > 5 ? p[5] : 0;
+        ctx.beginPath(); ctx.ellipse(qx, qy, Math.max(a * px, 3), Math.max(b * px, 3), -ang, 0, 2 * Math.PI);
+        ctx.setLineDash([3, 4]); ctx.lineWidth = 1.2; ctx.strokeStyle = c; ctx.stroke(); ctx.setLineDash([]);
+        ctx.globalAlpha = base * (i ? 0.45 : 0.6);
+        glyph(shapeOf(t.class), p[0], p[1], hdg, t.l, t.w, null, c, 1.4, [5, 4]);
+        ctx.globalAlpha = base;
+      });
+      arrowHead(n > 1 ? t.pred[n - 2][0] : t.x, n > 1 ? t.pred[n - 2][1] : t.y, e[0], e[1], c);
+    }
+    const [sx, sy] = w2s(t.x, t.y), [a, b, ang] = t.ell;          // 2-sigma position ellipse
+    ctx.beginPath(); ctx.ellipse(sx, sy, Math.max(a * px, 2.5), Math.max(b * px, 2.5), -ang, 0, 2 * Math.PI);
+    ctx.fillStyle = c; ctx.globalAlpha = base * 0.18; ctx.fill(); ctx.globalAlpha = base;
+    ctx.lineWidth = 1; ctx.strokeStyle = c; ctx.stroke();
+    glyph(shapeOf(t.class), t.x, t.y, t.yaw, t.l, t.w, null, c, tent ? 1.2 : 2.6, coast ? [4, 3] : null);
+    if (!tent && (view.scale > 0.5)) {
+      const cog = ((90 - deg(t.course)) % 360 + 360) % 360;
+      trackLabel(`T${t.id} ${t.class}` + (t.speed > 0.3 ? `  ${t.speed.toFixed(1)} m/s  ${cog.toFixed(0).padStart(3, '0')}\u00b0` : '')
+                 + (coast ? `  coast ${t.since.toFixed(1)}s` : ''), t.x, t.y, c);
+    }
+  });
+  ctx.globalAlpha = 1;
+}
+function trackInfo() {
+  if (!tracks) return;
+  const n = (s) => tracks.tracks.filter((t) => t.status === s).length, al = tracks.align || {};
+  const stale = performance.now() - tracksAt > 2000;
+  $('trkinfo').textContent = stale ? 'tracker silent for > 2 s' :
+    `${n('confirmed')} confirmed \u00b7 ${n('coasting')} coasting \u00b7 ${n('tentative')} tentative` +
+    (al.ekf_error_m != null ? `  \u00b7  EKF err ${al.ekf_error_m.toFixed(2)} m / ${al.ekf_heading_error_deg.toFixed(1)}\u00b0` : '') +
+    `  \u00b7  ${tracks.frame} \u2192 world ${al.theta_deg}\u00b0, (${al.tx}, ${al.ty})`;
+}
+['showtracks', 'showtrails', 'showtent'].forEach((id) => $(id).addEventListener('change', () => draw()));
+
+function drawGrid() {
+  const steps = [5, 10, 25, 50, 100, 250, 500], step = steps.find((s) => s * view.scale >= 70) || 1000;
+  const [x0, y1] = s2w(0, 0), [x1, y0] = s2w(W(), H());
+  ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(21,32,43,.07)'; ctx.fillStyle = 'rgba(21,32,43,.40)';
+  ctx.font = '10px Inter, system-ui'; ctx.textBaseline = 'alphabetic';
+  for (let x = Math.ceil(x0 / step) * step; x <= x1; x += step) {
+    const [sx] = w2s(x, 0); ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, H()); ctx.stroke();
+    ctx.textAlign = 'left'; ctx.fillText(String(x), sx + 3, H() - 70);
+  }
+  for (let y = Math.ceil(y0 / step) * step; y <= y1; y += step) {
+    const [, sy] = w2s(0, y); ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(W(), sy); ctx.stroke();
+    ctx.textAlign = 'right'; ctx.fillText(String(y), W() - 60, sy - 3);
+  }
+}
+function drawScale() {
+  const steps = [1, 2, 5, 10, 20, 50, 100, 200, 500], m = steps.find((s) => s * view.scale >= 70) || 1000, px = m * view.scale;
+  const x = W() - px - 22, y = H() - 22;
+  ctx.fillStyle = 'rgba(255,255,255,.94)'; roundRect(x - 8, y - 19, px + 16, 28, 7); ctx.fill();
+  ctx.strokeStyle = COL.ink; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + px, y); ctx.moveTo(x, y - 4); ctx.lineTo(x, y + 3); ctx.moveTo(x + px, y - 4); ctx.lineTo(x + px, y + 3); ctx.stroke();
+  ctx.fillStyle = COL.ink; ctx.font = '600 11px Inter, system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.fillText(`${m} m`, x + px / 2, y - 6);
+}
+function egoBox(e) { return [e.x + e.offset_x * Math.cos(e.heading), e.y + e.offset_x * Math.sin(e.heading)]; }
+
+// ================================================================ hit testing
+function pointInPoly(x, y, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+function hitShape(wx, wy, shape, x, y, h, l, w) {
+  const tol = 9 / view.scale;
+  if (shape === 'round') return Math.hypot(wx - x, wy - y) <= Math.max(Math.max(l, w) / 2, tol);
+  return pointInPoly(wx, wy, outline('rect', x, y, h, Math.max(l, 2 * tol), Math.max(w, 2 * tol)));
+}
+function hit(px, py) {
+  const [wx, wy] = s2w(px, py), tol = 9 / view.scale;
+  if (sel && sel.kind === 'obstacle') {
+    const o = obByName(draft, sel.name);
+    if (o && o.motion.type === 'waypoints') {
+      const i = (o.motion.points || []).findIndex(([x, y]) => Math.hypot(x - wx, y - wy) < tol);
+      if (i >= 0) return { kind: 'wp', name: o.name, index: i };
+    }
+  }
+  const b = live.boat;
+  if (b) {
+    const e = egoDraft || b, [ex, ey] = egoBox({ ...e, offset_x: b.offset_x });
+    if (hitShape(wx, wy, 'hull', ex, ey, e.heading, b.l, b.w)) return { kind: 'ego' };
+  }
+  for (const o of [...draft.obstacles].reverse()) {
+    const [l, w] = dims(o), sh = shapeOf(clsOf(o)), lv = liveOb(o.name);
+    if (hitShape(wx, wy, sh, o.start.x, o.start.y, startHeading(o), l, w)) return { kind: 'obstacle', name: o.name };
+    if (lv && hitShape(wx, wy, sh, lv.x, lv.y, lv.heading, l, w)) return { kind: 'obstacle', name: o.name };
+  }
+  return null;
+}
+
+// ================================================================ mouse + keys
+let drag = null, hoverWorld = null;
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+canvas.addEventListener('wheel', (e) => { e.preventDefault(); zoomAt(e.offsetX, e.offsetY, Math.pow(1.0015, -e.deltaY)); }, { passive: false });
+canvas.addEventListener('mousedown', (e) => {
+  const [wx, wy] = s2w(e.offsetX, e.offsetY);
+  if (envCall('rgMouseDown', e, wx, wy)) return;        // the Route goal tools come first while active
+  if (!draft) return;
+  if (envOn()) {                            // Environment tab: obstacles are not selectable
+    if (envMouseDown(e, wx, wy)) return;
+    if (e.button !== 0) return;
+    drag = { type: 'pan', px: e.offsetX, py: e.offsetY, moved: false }; canvas.classList.add('panning'); return;
+  }
+  const h = hit(e.offsetX, e.offsetY);
+  if (placeModel) {
+    if (e.button === 2) { setPlace(null); return; }
+    const m = placeModel; addObstacle(m, wx, wy); if (e.shiftKey) setPlace(m); else setPlace(null); return;
+  }
+  if (wpMode && sel && sel.kind === 'obstacle') {
+    const o = obByName(draft, sel.name);
+    if (e.button === 2) { o.motion.points.pop(); changed(); return; }
+    if (h && h.kind === 'wp' && h.name === o.name) { drag = { type: 'wp', index: h.index }; return; }
+    o.motion.points.push([+wx.toFixed(2), +wy.toFixed(2)]); changed(); return;
+  }
+  if (e.button !== 0) return;
+  if (h && h.kind === 'wp') { drag = { type: 'wp', index: h.index }; return; }
+  if (h && h.kind === 'ego') {
+    select({ kind: 'ego' }); const e0 = currentEgo();
+    drag = { type: 'ego', dx: e0.x - wx, dy: e0.y - wy, heading: e0.heading }; return;
+  }
+  if (h && h.kind === 'obstacle') {
+    select({ kind: 'obstacle', name: h.name }); const o = obByName(draft, h.name);
+    // drag moves the whole path with the obstacle; Shift-drag moves only the start
+    drag = { type: 'start', name: h.name, wx, wy, x0: o.start.x, y0: o.start.y,
+             pts: o.motion.points ? deep(o.motion.points) : null, onlyStart: e.shiftKey };
+    return;
+  }
+  drag = { type: 'pan', px: e.offsetX, py: e.offsetY, moved: false }; canvas.classList.add('panning');
+});
+window.addEventListener('mousemove', (e) => {
+  const r = canvas.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+  if (px >= 0 && py >= 0 && px <= r.width && py <= r.height) {
+    const [wx, wy] = s2w(px, py); hoverWorld = [wx, wy];
+    $('cursor').textContent = `x ${wx.toFixed(1)}   y ${wy.toFixed(1)}   ·   ${view.scale >= 1 ? view.scale.toFixed(1) + ' px/m' : (1 / view.scale).toFixed(1) + ' m/px'}`;
+    if (placeModel || (envOn() && ENV.place)) draw();
+    if (envCall('rgMouseMove', wx, wy)) return;
+    if (!drag) envCall('vmapHover', px, py, wx, wy);
+    if (envOn() && envMouseMove(wx, wy)) return;
+  }
+  if (!drag) return;
+  const [wx, wy] = s2w(px, py);
+  if (drag.type === 'pan') { view.cx -= (px - drag.px) / view.scale; view.cy += (py - drag.py) / view.scale; drag.px = px; drag.py = py; drag.moved = true; draw(); return; }
+  canvas.classList.add('drag');
+  if (drag.type === 'start') {
+    const o = obByName(draft, drag.name), dx = wx - drag.wx, dy = wy - drag.wy;
+    o.start.x = +(drag.x0 + dx).toFixed(2); o.start.y = +(drag.y0 + dy).toFixed(2);
+    if (drag.pts && !drag.onlyStart) o.motion.points = drag.pts.map(([x, y]) => [+(x + dx).toFixed(2), +(y + dy).toFixed(2)]);
+    changed();
+  } else if (drag.type === 'ego') { egoDraft = { x: +(wx + drag.dx).toFixed(2), y: +(wy + drag.dy).toFixed(2), heading: drag.heading }; changed(); }
+  else if (drag.type === 'wp') { obByName(draft, sel.name).motion.points[drag.index] = [+wx.toFixed(2), +wy.toFixed(2)]; changed(); }
+});
+window.addEventListener('mouseup', (e) => {
+  if (envCall('rgMouseUp', e)) return;
+  if (envOn() && envMouseUp()) { canvas.classList.remove('drag'); return; }
+  if (drag && drag.type === 'pan' && !drag.moved && !wpMode) { if (envOn()) envSelect(null); else select(null); }
+  drag = null; canvas.classList.remove('panning', 'drag');
+});
+window.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT') return;
+  if (envCall('rgKey', e)) return;
+  if (envOn() && envKey(e)) return;
+  if (e.key === 'Escape' || e.key === 'Enter') {
+    if (placeModel) setPlace(null); else if (wpMode) setWpMode(false); else if (e.key === 'Escape') select(null);
+  } else if ((e.key === 'Delete' || e.key === 'Backspace') && sel && sel.kind === 'obstacle' && !wpMode) deleteSelected();
+});
+$('zin').onclick = () => zoomAt(W() / 2, H() / 2, 1.4);
+$('zout').onclick = () => zoomAt(W() / 2, H() / 2, 1 / 1.4);
+$('zfit').onclick = fitScene;
+$('legtog').onclick = () => { const l = $('legend'), m = l.classList.toggle('min'); $('legtog').innerHTML = m ? 'legend &#9652;' : 'hide legend &#9662;'; };
+
+// ================================================================ add / delete
+function uniqueName(model) {
+  const base = model.replace(/[^a-z0-9_]+/gi, '_').replace(/_+$/, '');
+  for (let i = 1; ; i++) { const n = `${base}_${i}`; if (!obByName(draft, n)) return n; }
+}
+function addObstacle(model, x, y) {
+  const o = { name: uniqueName(model), model, start: { x: +x.toFixed(2), y: +y.toFixed(2), heading_deg: 0 }, motion: { type: 'static' } };
+  draft.obstacles.push(o); select({ kind: 'obstacle', name: o.name }); changed();
+  say(`added '${o.name}' (${model}) -- press Update to put it in the sim`, 'ok');
+}
+function deleteSelected() {
+  if (!sel || sel.kind !== 'obstacle') return;
+  const n = sel.name; draft.obstacles = draft.obstacles.filter((o) => o.name !== n); select(null); changed();
+  say(`removed '${n}' -- press Update to take it out of the sim`, 'warn');
+}
+$('del').onclick = deleteSelected;
+function setPlace(model) {
+  placeModel = model; if (model) { if (wpMode) setWpMode(false); if (sel) select(null); }
+  canvas.classList.toggle('place', !!model); showMode(); renderPalette(); draw();
+}
+function showMode() {
+  const m = $('mode');
+  if (placeModel) { m.innerHTML = `Placing <b>${placeModel.replace(/_/g, ' ')}</b> &middot; click the map &middot; Shift+click places several &middot; Esc cancels`; m.style.display = 'block'; }
+  else if (wpMode && sel) { m.innerHTML = `Drawing the path of <b>${sel.name}</b> &middot; click to add &middot; right-click removes the last &middot; Esc when done`; m.style.display = 'block'; }
+  else m.style.display = 'none';
+}
+function swatch(m) {
+  const c = m.colour ? `rgb(${m.colour.map((v) => Math.round(v * 255)).join(',')})` :
+    ({ boat: '#8aa0b5', ship: '#e6e9ee', kayak: '#f28c28', buoy: '#e53935', debris: '#8d6e63', pillar: '#6d6356' }[m.class] || '#9aa7b4');
+  return `<span class="sw${shapeOf(m.class) === 'round' ? ' round' : ''}" style="background:${c}"></span>`;
+}
+function renderPalette() {
+  const groups = {};
+  Object.entries(MODELS).forEach(([n, m]) => { (groups[m.group] = groups[m.group] || []).push([n, m]); });
+  const order = ['Buoys & marks', 'Poles & structures', 'Floating objects', 'Vessels', 'Other'];
+  $('palette').innerHTML = order.filter((g) => groups[g]).map((g) => `<div class="pgroup">${g}</div><div class="pal">` +
+    groups[g].map(([n, m]) => `<div class="pcard${placeModel === n ? ' on' : ''}" data-m="${n}" title="${n}: ${m.l.toFixed(1)} x ${m.w.toFixed(1)} m, ${m.h.toFixed(1)} m tall">${swatch(m)}
+      <div style="min-width:0"><div class="pn">${n.replace(/_/g, ' ')}</div><div class="ps">${m.l.toFixed(1)} x ${m.w.toFixed(1)} m</div></div></div>`).join('') + '</div>').join('');
+  $('palette').querySelectorAll('.pcard').forEach((c) => c.onclick = () => setPlace(placeModel === c.dataset.m ? null : c.dataset.m));
+}
+
+// ================================================================ panel
+function select(s) {
+  if (wpMode && (!s || !sel || s.kind !== sel.kind || s.name !== sel.name)) { wpMode = false; canvas.classList.remove('wp'); }
+  sel = s; showMode(); refreshPanel(); draw();
+}
+function currentEgo() { if (egoDraft) return egoDraft; const b = live.boat; return b ? { x: b.x, y: b.y, heading: b.heading } : null; }
+function setEnabled(el, on) { el.classList.toggle('dim', !on); el.querySelectorAll('input,select,button').forEach((i) => i.disabled = !on); }
+function setVal(id, v) { const el = $(id); if (document.activeElement !== el) el.value = v; }
+
+function refreshPanel() {
+  if (envOn()) { $('scene').style.display = 'none'; $('sel').style.display = 'none'; return; }
+  $('scene').style.display = sel ? 'none' : ''; $('sel').style.display = sel ? '' : 'none';
+  if (!sel) { refreshList(); return; }
+  if (sel.kind === 'ego') {
+    const e = currentEgo(); if (!e) return;
+    $('selname').textContent = live.boat.name;
+    $('selchips').innerHTML = `<span class="chip" style="color:var(--ego)">ego vehicle</span><span class="chip">moved on Update</span>`;
+    $('del').style.visibility = 'hidden'; $('selwarn').innerHTML = '';
+    setVal('px', e.x.toFixed(2)); setVal('py', e.y.toFixed(2)); setVal('phead', wrapDeg(deg(e.heading)).toFixed(1));
+    $('orinote').textContent = ''; showBearing(deg(e.heading)); drawDial(deg(e.heading));
+    ['motioncard', 'velcard', 'wpcard'].forEach((id) => setEnabled($(id), false));
+    return;
+  }
+  const o = obByName(draft, sel.name); if (!o) { select(null); return; }
+  const lv = liveOb(o.name), m = o.motion, isStatic = m.type === 'static', isWp = m.type === 'waypoints';
+  $('del').style.visibility = '';
+  const mine = checks.warnings.filter((w) => w.names.includes(o.name));
+  $('selwarn').innerHTML = mine.map((w) => `<div class="warnbox">&#9888; ${w.text}</div>`).join('');
+  $('selname').textContent = o.name;
+  $('selchips').innerHTML = `<span class="chip">${o.model}</span><span class="chip">class ${clsOf(o)}</span>` +
+    (lv ? `<span class="chip st ${lv.status}">${lv.status}${lv.speed > 0.01 ? ' · ' + lv.speed.toFixed(2) + ' m/s' : ''}</span>` : `<span class="chip st new">not in the sim yet</span>`);
+  setVal('px', (+o.start.x).toFixed(2)); setVal('py', (+o.start.y).toFixed(2));
+  const hd = deg(startHeading(o));
+  setVal('phead', wrapDeg(hd).toFixed(1)); showBearing(hd); drawDial(hd);
+  $('orinote').textContent = isWp ? 'Turning the compass rotates the whole path around the start.' : '';
+  setEnabled($('motioncard'), true);
+  document.querySelectorAll('#seg button').forEach((b) => b.classList.toggle('on', b.dataset.t === m.type));
+  $('turnrow').style.display = m.type === 'constant_turn' ? '' : 'none';
+  setVal('pturn', m.turn_rate_deg_s != null ? m.turn_rate_deg_s : 0);
+  // STATIC: velocity and waypoints dimmed (the wireframe rule)
+  setEnabled($('velcard'), !isStatic); setEnabled($('wpcard'), !isStatic);
+  const v = +o.speed || 0;
+  setVal('pv', isStatic ? '' : v.toFixed(2)); setVal('pvr', isStatic ? 0 : v);
+  $('kn').textContent = isStatic ? 'static obstacle' : `${(v / KNOT).toFixed(1)} kn`;
+  $('wploop').checked = !!m.loop;
+  $('wpinfo').textContent = isWp ? `${(m.points || []).length} point${(m.points || []).length === 1 ? '' : 's'}${m.loop ? ' · loops' : ''}` : 'press Waypoint to draw a path';
+  $('wpbtn').textContent = wpMode ? 'Done  (Esc)' : 'Waypoint'; $('wpbtn').classList.toggle('on', wpMode);
+}
+function showBearing(hdENU) {
+  const b = ((90 - hdENU) % 360 + 360) % 360, names = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+  $('bearing').innerHTML = `compass <b>${b.toFixed(0)}° ${names[Math.round(b / 45) % 8]}</b><br>file heading_deg ${wrapDeg(hdENU).toFixed(0)} (0 = east)`;
+}
+function refreshList() {
+  if (!draft) { $('objlist').innerHTML = ''; return; }
+  const items = [];
+  if (live.boat) items.push(`<div class="item" data-ego="1"><span class="dot" style="background:var(--ego)"></span><span class="nm">${live.boat.name}</span><span class="md">ego vehicle</span></div>`);
+  draft.obstacles.forEach((o) => {
+    const lv = liveOb(o.name), c = lv ? statusCol(lv.status) : COL.sel;
+    items.push(`<div class="item" data-name="${o.name}"><span class="dot" style="background:${c}"></span><span class="nm">${o.name}</span><span class="md">${o.model}${lv ? '' : ' · new'}</span></div>`);
+  });
+  $('objlist').innerHTML = items.join('');
+  $('count').textContent = `${draft.obstacles.length} obstacles`;
+  $('objlist').querySelectorAll('.item').forEach((d) => d.onclick = () => {
+    if (d.dataset.ego) { select({ kind: 'ego' }); const e = currentEgo(); if (e) { view.cx = e.x; view.cy = e.y; } }
+    else { select({ kind: 'obstacle', name: d.dataset.name }); const o = obByName(draft, d.dataset.name); view.cx = o.start.x; view.cy = o.start.y; }
+    if (view.scale < 2.5) view.scale = 4; draw();
+  });
+}
+$('back').onclick = () => select(null);
+
+// ---------------- compass: N up, E right (like the map)
+function drawDial(hdENU, id) {
+  const c = $(id || 'dial'), g = c.getContext('2d'), S = c.width, R = S / 2 - 10;
+  g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, S, S); g.translate(S / 2, S / 2);
+  const grad = g.createRadialGradient(0, -R * .3, R * .2, 0, 0, R);
+  grad.addColorStop(0, '#ffffff'); grad.addColorStop(1, '#eef2f6');
+  g.beginPath(); g.arc(0, 0, R, 0, 2 * Math.PI); g.fillStyle = grad; g.fill();
+  g.lineWidth = 3; g.strokeStyle = '#cfd7e0'; g.stroke();
+  for (let d = 0; d < 360; d += 10) {
+    const a = rad(d), major = d % 90 === 0, mid = d % 30 === 0, r0 = major ? R - 22 : mid ? R - 15 : R - 9;
+    g.beginPath(); g.moveTo(r0 * Math.cos(a), r0 * Math.sin(a)); g.lineTo((R - 3) * Math.cos(a), (R - 3) * Math.sin(a));
+    g.lineWidth = major ? 4 : mid ? 2.5 : 1.5; g.strokeStyle = major ? '#15202b' : '#8a99a8'; g.stroke();
+  }
+  g.font = '800 26px Inter, system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  [['N', 0, -1, '#d93025'], ['E', 1, 0, '#15202b'], ['S', 0, 1, '#15202b'], ['W', -1, 0, '#15202b']]
+    .forEach(([t, x, y, col]) => { g.fillStyle = col; g.fillText(t, x * (R - 44), y * (R - 44)); });
+  const a = -rad(hdENU), L = R - 30;
+  g.save(); g.rotate(a);
+  g.beginPath(); g.moveTo(L, 0); g.lineTo(-16, 13); g.lineTo(-6, 0); g.lineTo(-16, -13); g.closePath();
+  g.fillStyle = '#f57c00'; g.shadowColor = 'rgba(0,0,0,.25)'; g.shadowBlur = 6; g.fill(); g.restore();
+  g.beginPath(); g.arc(0, 0, 9, 0, 2 * Math.PI); g.fillStyle = '#15202b'; g.fill();
+  g.beginPath(); g.arc(0, 0, 3.5, 0, 2 * Math.PI); g.fillStyle = '#fff'; g.fill();
+}
+function dialSet(e) {
+  const r = $('dial').getBoundingClientRect(), x = e.clientX - r.left - r.width / 2, y = e.clientY - r.top - r.height / 2;
+  let hd = deg(Math.atan2(-y, x)); if (e.shiftKey) hd = Math.round(hd / 15) * 15; setHeading(hd);
+}
+let dialDrag = false;
+$('dial').addEventListener('pointerdown', (e) => { if ($('oricard').classList.contains('dim')) return; dialDrag = true; try { $('dial').setPointerCapture(e.pointerId); } catch (_) {} dialSet(e); });
+$('dial').addEventListener('pointermove', (e) => { if (dialDrag) dialSet(e); });
+$('dial').addEventListener('pointerup', () => { dialDrag = false; });
+
+function setHeading(hd) {
+  hd = wrapDeg(hd);
+  if (sel.kind === 'ego') { const e = currentEgo(); egoDraft = { x: e.x, y: e.y, heading: rad(hd) }; changed(); return; }
+  const o = obByName(draft, sel.name);
+  if (o.motion.type === 'waypoints' && (o.motion.points || []).length) {
+    // rotate the WHOLE path about the start so the first leg points at hd
+    const d = rad(hd) - startHeading(o), c = Math.cos(d), s = Math.sin(d), x0 = o.start.x, y0 = o.start.y;
+    o.motion.points = o.motion.points.map(([x, y]) => [+(x0 + c * (x - x0) - s * (y - y0)).toFixed(2), +(y0 + s * (x - x0) + c * (y - y0)).toFixed(2)]);
+  } else o.start.heading_deg = +hd.toFixed(1);
+  changed();
+}
+$('phead').addEventListener('change', () => setHeading(+$('phead').value || 0));
+['px', 'py'].forEach((id) => $(id).addEventListener('change', () => {
+  const v = +$(id).value; if (!isFinite(v)) return;
+  if (sel.kind === 'ego') { const e = { ...currentEgo() }; e[id === 'px' ? 'x' : 'y'] = v; egoDraft = e; changed(); return; }
+  const o = obByName(draft, sel.name), k = id === 'px' ? 'x' : 'y', d = v - o.start[k];
+  o.start[k] = v;     // the path moves with its start
+  if (o.motion.points) o.motion.points = o.motion.points.map((p) => k === 'x' ? [+(p[0] + d).toFixed(2), p[1]] : [p[0], +(p[1] + d).toFixed(2)]);
+  changed();
+}));
+function setSpeed(v) { obByName(draft, sel.name).speed = +Math.max(0, v).toFixed(3); changed(); }
+$('pv').addEventListener('change', () => setSpeed(+$('pv').value || 0));
+$('pvr').addEventListener('input', () => setSpeed(+$('pvr').value));
+$('pturn').addEventListener('change', () => { obByName(draft, sel.name).motion.turn_rate_deg_s = +$('pturn').value || 0; changed(); });
+document.querySelectorAll('#seg button').forEach((b) => b.onclick = () => setMotion(b.dataset.t));
+function setMotion(t) {
+  const o = obByName(draft, sel.name), m = o.motion, hd = deg(startHeading(o));
+  if (t === m.type) return;
+  if (t === 'waypoints') { m.points = m.points && m.points.length ? m.points : []; delete m.turn_rate_deg_s; }
+  else { delete m.points; delete m.loop; o.start.heading_deg = +hd.toFixed(1); }
+  if (t === 'constant_turn' && m.turn_rate_deg_s == null) m.turn_rate_deg_s = 3.0;
+  if (t !== 'static' && !(o.speed > 0)) o.speed = 1.0;
+  m.type = t; setWpMode(t === 'waypoints' && !(m.points || []).length); changed();
+}
+$('wpbtn').onclick = () => {
+  const o = obByName(draft, sel.name);
+  if (o.motion.type !== 'waypoints') { o.start.heading_deg = +deg(startHeading(o)).toFixed(1); o.motion = { type: 'waypoints', points: [], loop: false }; if (!(o.speed > 0)) o.speed = 1.0; }
+  setWpMode(!wpMode); changed();
+};
+$('wploop').onchange = () => { obByName(draft, sel.name).motion.loop = $('wploop').checked; changed(); };
+$('wpclear').onclick = () => { const o = obByName(draft, sel.name); if (o.motion.points) o.motion.points = []; changed(); };
+function setWpMode(on) { wpMode = on; canvas.classList.toggle('wp', on); showMode(); refreshPanel(); }
+
+// ================================================================ dirty tracking + buttons
+let savedDoc = null;
+let checks = { error: null, warnings: [] }, checkTimer = null, checkSeq = 0, lastCheckKey = '';
+const flagged = () => new Set(checks.warnings.flatMap((w) => w.names));
+function changed() { refreshPanel(); refreshBadges(); draw(); scheduleCheck(); }
+// run the spawner's checks on the DRAFT shortly after the last edit
+function scheduleCheck() {
+  clearTimeout(checkTimer);
+  checkTimer = setTimeout(async () => {
+    const key = JSON.stringify(forSim(draft).obstacles); if (key === lastCheckKey) return;
+    lastCheckKey = key; const seq = ++checkSeq;
+    try {
+      const r = await post('/check', { doc: forSim(draft) }); if (seq !== checkSeq) return;
+      const before = new Set(checks.warnings.map((w) => w.text));
+      checks = { error: r.ok ? null : r.error, warnings: r.warnings || [] };
+      if (checks.error) say('check: ' + checks.error, 'bad');
+      checks.warnings.filter((w) => !before.has(w.text)).forEach((w) => say(w.text, 'warn'));
+      refreshBadges(); draw(); if (sel) refreshPanel();
+    } catch (e) { /* the checks are advisory */ }
+  }, 700);
+}
+// "same" ignores differences under 10 cm / 0.1 deg (a rotate-and-back round trip is not an edit)
+const coarse = (d) => JSON.stringify(forSim(d).obstacles, (k, v) => typeof v === 'number' ? Math.round(v * 10) / 10 : v);
+const same = (a, b) => coarse(a) === coarse(b);
+function refreshBadges() {
+  const b = [];
+  if (draft && applied && (!same(draft, applied) || egoDraft)) b.push('<span class="badge warn">not applied &middot; press Update</span>');
+  if (draft && savedDoc && !same(draft, savedDoc)) b.push('<span class="badge warn">not saved</span>');
+  if (!b.length && draft) b.push('<span class="badge ok">sim and file up to date</span>');
+  if (checks.error) b.push('<span class="badge bad">config error</span>');
+  else if (checks.warnings.length) b.push(`<span class="badge bad" title="${checks.warnings.map((w) => w.text).join('\n')}">&#9888; ${checks.warnings.length} warning${checks.warnings.length > 1 ? 's' : ''}</span>`);
+  b.push(...(envCall('envBadges') || []));
+  b.push(live.running ? `<span class="badge info">running &middot; t = ${live.tau.toFixed(0)} s</span>` : '<span class="badge info">holding</span>');
+  $('badges').innerHTML = b.join('');
+}
+function say(text, cls) {
+  const el = $('log'), line = document.createElement('div');
+  line.innerHTML = `<span class="t">${new Date().toLocaleTimeString()}</span><span class="${cls || ''}"></span>`;
+  line.lastChild.textContent = text; el.prepend(line); while (el.children.length > 40) el.lastChild.remove();
+}
+async function post(p, body) {
+  const r = await fetch(p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+  return r.json();
+}
+function busy(on) { ['bupdate', 'bsave', 'bclear', 'brun', 'breset'].forEach((id) => $(id).disabled = on); }
+function problems(doc) {
+  const out = [];
+  doc.obstacles.forEach((o) => {
+    if (o.motion.type === 'waypoints' && !(o.motion.points || []).length) out.push(`'${o.name}' is a path with no points: press Waypoint and click the map`);
+    if (o.motion.type !== 'static' && !(o.speed > 0)) out.push(`'${o.name}' moves but its velocity is 0`);
+  });
+  return out;
+}
+$('bupdate').onclick = async () => {
+  if (envOn()) return envUpdate();
+  if (wpMode) setWpMode(false); if (placeModel) setPlace(null);
+  const bad = problems(draft); if (bad.length) { bad.forEach((b) => say(b, 'bad')); return; }
+  busy(true);
+  try {
+    const body = { doc: forSim(draft) }; if (egoDraft) body.ego = egoDraft;
+    const r = await post('/update', body);
+    say(r.message || (r.ok ? 'applied' : 'failed'), r.ok ? 'ok' : 'bad');
+    (r.warnings || []).forEach((w) => say(w, 'warn'));
+    if (r.ok) { applied = deep(draft); egoDraft = null; }
+  } catch (e) { say('update failed: ' + e, 'bad'); }
+  busy(false); refreshBadges(); draw();
+};
+$('bsave').onclick = async () => {
+  if (envOn()) return envSave();
+  if (wpMode) setWpMode(false); busy(true);
+  try {
+    const r = await post('/save', { doc: forSim(draft) }); say(r.message, r.ok ? 'ok' : 'bad');
+    if (r.ok) { savedDoc = deep(draft); if (!same(draft, applied)) say('saved to the file but NOT applied to the sim -- press Update', 'warn'); }
+  } catch (e) { say('save failed: ' + e, 'bad'); }
+  busy(false); refreshBadges();
+};
+$('bclear').onclick = async () => {
+  if (envOn()) return envClear();
+  if (wpMode) setWpMode(false); if (placeModel) setPlace(null);
+  draft = deep(applied); egoDraft = null; select(null); changed();
+  const r = await post('/reset'); say('changes cleared; ' + r.message, r.ok ? 'ok' : 'bad');
+};
+$('brun').onclick = async () => {
+  if (!same(draft, applied) || egoDraft) say('running the APPLIED scenario -- newer changes are not in it yet (Update first)', 'warn');
+  const r = await post('/run'); say(r.message, r.ok ? 'ok' : 'bad');
+};
+$('breset').onclick = async () => { const r = await post('/reset'); say(r.message, r.ok ? 'ok' : 'bad'); };
+
+// ================================================================ start-up
+async function loadConfig() {
+  for (;;) {
+    try {
+      const j = await (await fetch('/config')).json();
+      if (j.ok) { configFile = j.config_file; applied = normalise(j.doc); draft = deep(applied); savedDoc = deep(applied);
+        say(`loaded the running scenario (${configFile.split('/').pop()})`, 'ok'); return; }
+      say(j.message, 'warn');
+    } catch (e) { say('waiting for obstacle_ui ...', 'warn'); }
+    await new Promise((res) => setTimeout(res, 2000));
+  }
+}
+async function loadModels() {
+  try { (await (await fetch('/models')).json()).forEach((m) => MODELS[m.name] = m); } catch (e) { MODELS = {}; }
+  renderPalette();
+}
+async function init() {
+  loadColours(); window.addEventListener('resize', resize); resize();
+  try { MAP = await (await fetch('/map.json')).json(); if (MAP && MAP.w) { mapImg = new Image(); mapImg.onload = () => draw(); mapImg.src = '/map.png'; } } catch (e) { MAP = null; }
+  const es = new EventSource('/events'); let last = 0;
+  window.SIMU_ES = es;                      // route_goal.js listens on it too
+  es.onmessage = (ev) => {
+    try { live = Object.assign({ obstacles: [], boat: null }, JSON.parse(ev.data)); } catch (e) { return; }
+    const now = performance.now();
+    if (now - last > 90) { last = now; draw(); if (!drag) { refreshBadges(); if (sel) refreshPanel(); else refreshList(); } }
+  };
+  es.addEventListener('tracks', (ev) => {
+    try { tracks = JSON.parse(ev.data); tracksAt = performance.now(); } catch (e) { return; }
+    trackInfo();
+  });
+  setInterval(trackInfo, 1000);
+  es.onerror = () => { $('cursor').textContent = 'lost connection to obstacle_ui -- retrying ...'; };
+  await loadConfig(); await loadModels(); refreshPanel(); refreshBadges(); scheduleCheck();
+  setTimeout(fitScene, 400);
+}
+init();
+</script>
+<script src="/env.js"></script>
+<script src="/vmap.js"></script>
+<script src="/route1.js"></script>
+<script src="/route_goal.js"></script>
+</body>
+</html>

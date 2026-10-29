@@ -1,0 +1,42 @@
+# =============================================================================
+# thrusters_v2.yaml  -  ros_gz_bridge config for the my_boat v2 propulsion bus
+# =============================================================================
+# v2 (decoupled) arrangement: two centreline lateral thrusters straddling the
+# CG plus a FIXED axial stern propeller. Three command topics, all thrust in
+# Newtons -- there is NO steering actuator in this layout, so (unlike v1's
+# thrusters.yaml) there is no ".../pos" topic.
+#
+# A downstream ROS 2 allocator (dynamic_positioning/claude/thruster_allocator_v2)
+# publishes T1/T2/P1 forces here; Gazebo's Thruster plugins consume them.
+#
+# Run with:
+#   ros2 run ros_gz_bridge parameter_bridge \
+#       --ros-args -p config_file:=<this file>
+# (launch/spawn_my_boat_v2.launch.py starts it automatically; bridge:=false to skip)
+#
+# Sign conventions (see docs/THRUSTERS_V2.md):
+#   T1 > 0 -> force toward PORT (+Y) at the FORWARD station  -> +yaw (bow to port)
+#   T2 > 0 -> force toward PORT (+Y) at the AFT station      -> -yaw
+#   P1 > 0 -> surge FORWARD (+X);  P1 < 0 -> astern
+# =============================================================================
+
+# --- T1: forward lateral thruster (APISQUEEN U92 Pro, +/-98 N) ---------------
+- ros_topic_name: "/my_boat/thrusters/T1/thrust"
+  gz_topic_name:  "/my_boat/thrusters/T1/thrust"
+  ros_type_name:  "std_msgs/msg/Float64"
+  gz_type_name:   "gz.msgs.Double"
+  direction: ROS_TO_GZ
+
+# --- T2: aft lateral thruster (APISQUEEN U92 Pro, +/-98 N) -------------------
+- ros_topic_name: "/my_boat/thrusters/T2/thrust"
+  gz_topic_name:  "/my_boat/thrusters/T2/thrust"
+  ros_type_name:  "std_msgs/msg/Float64"
+  gz_type_name:   "gz.msgs.Double"
+  direction: ROS_TO_GZ
+
+# --- P1: fixed stern propeller (Torqeedo Cruise 3.0 R, +/-632 N) -------------
+- ros_topic_name: "/my_boat/thrusters/P1/thrust"
+  gz_topic_name:  "/my_boat/thrusters/P1/thrust"
+  ros_type_name:  "std_msgs/msg/Float64"
+  gz_type_name:   "gz.msgs.Double"
+  direction: ROS_TO_GZ

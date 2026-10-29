@@ -1,0 +1,130 @@
+<?xml version="1.0"?>
+<!--
+  my_boat_gazebo_dynamics_plugin.xacro
+  ====================================
+  Marine physics for my_boat. All behaviour comes from existing VRX plugins.
+
+  Buoyancy + drag .......... vrx::PolyhedraBuoyancyDrag (libPolyhedraBuoyancyDrag.so)
+  Hydrodynamic drag/added mass vrx::SimpleHydrodynamics  (libSimpleHydrodynamics.so)
+  Wind ..................... vrx::USVWind                (libUSVWind.so, in the WORLD)
+
+  BUOYANCY MODEL (PolyhedraBuoyancyDrag)
+  ======================================
+  Unlike Surface (an abstract cylinder sampled at points), PolyhedraBuoyancyDrag
+  integrates the SUBMERGED VOLUME of a <buoyancy> shape and applies Archimedes'
+  force at the submerged centroid. Because it tracks the real submerged
+  polyhedron, a SINGLE box gives roll/pitch restoring (the centre of buoyancy
+  shifts as the hull heels) — no twin-hull trick needed.
+
+  The <buoyancy> box approximates the wetted hull. It is sized so the 420 kg
+  boat floats TOUCHING the water at a realistic, stable draft:
+    box = 3.4 x 1.2 x 0.5 m, centred at base_link (0, 0, -0.25) -> spans z[-0.50,0]
+    equilibrium submerged volume V = m/rho = 420/1000 = 0.42 m^3
+    waterplane area A = 3.4 x 1.2 = 4.08 m^2  ->  draft ~= V/A ~= 0.10 m
+    metacentric height GM ~= +0.7 m (BM = I_wp/V ~= 1.17, CG ~0.40 m above WL)
+  => the lower ~10 cm of hull is wetted, upright and stable. Tune draft via the
+     box size / fluid_density; wider box = higher (shallower) + more stable.
+
+  PolyhedraBuoyancyDrag also applies an isotropic drag (linear_drag, angular_drag).
+  We keep it LIGHT here and let SimpleHydrodynamics provide the main directional
+  6-DOF damping + added mass, so the two don't over-damp wind drift.
+-->
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+  <xacro:macro name="usv_dynamics_gazebo" params="name">
+
+    <!-- ===================== Buoyancy (PolyhedraBuoyancyDrag) =========== -->
+    <xacro:arg name="fluid_level"     default="0.0"/>
+    <xacro:arg name="fluid_density"   default="1000.0"/>
+    <!-- 2026-10-05: 2.0 -> 0.2. This plugin's drag is linear_drag x WETTED MASS (~86.5 kg) x v, ISOTROPIC:
+         at 2.0 it added ~173 N.s/m of SURGE drag on top of xU, which is why 554 N gave only 1.03 m/s.
+         See SURGE MATCHED TO THE REAL BOAT below. -->
+    <xacro:arg name="linear_drag"     default="0.2"/>
+    <xacro:arg name="angular_drag"    default="1.0"/>
+    <xacro:arg name="wavefield_topic" default="/vrx/wavefield/parameters"/>
+    <!-- Buoyancy box (approximates the wetted hull), in the base_link frame. -->
+    <xacro:arg name="buoy_size_x" default="3.4"/>
+    <xacro:arg name="buoy_size_y" default="1.2"/>
+    <xacro:arg name="buoy_size_z" default="0.5"/>
+    <xacro:arg name="buoy_pose"   default="0 0 -0.25 0 0 0"/>
+
+    <!-- ========================= Hydrodynamics args ===================== -->
+    <!-- Added mass (negative, Fossen; below the ~420 kg displaced mass). -->
+    <xacro:arg name="xDotU" default="-20.0"/>
+    <xacro:arg name="yDotV" default="-200.0"/>
+    <xacro:arg name="zDotW" default="-150.0"/>
+    <xacro:arg name="kDotP" default="-20.0"/>
+    <xacro:arg name="mDotQ" default="-200.0"/>
+    <xacro:arg name="nDotR" default="-100.0"/>
+    <!-- SURGE MATCHED TO THE REAL BOAT (user decision 2026-10-05: "make the sim match the real boat").
+         Real: measured thrust curve F ~ 191 v^1.98 -> 554.1 N (T3 full) gives ~1.71 m/s, cruise 1.5 m/s
+         at ~426 N (memory nav2-boat-live-config); coast-down linear drag hint 41 N.s/m (hull_model.yaml).
+         Sim total surge drag now = (xU + 0.2 x 86.5) u + xUU u|u| = 41 u + 165.5 u^2:
+           554.1 N -> 1.71 m/s, 1.5 m/s needs 434 N (real 426).  Was 339 u + 193 u^2 (fitted to the
+           measured 150/300/554 N -> 0.366/0.605/1.03 m/s).  Sway, heave, roll, pitch, yaw unchanged.
+         The turn and stop tables in route_one_vessel/config/sim_vessel.yaml must be RE-MEASURED. -->
+    <!-- Linear drag. -->
+    <xacro:arg name="xU" default="24.0"/>
+    <!-- +156 = what linear_drag 2.0 -> 0.2 took away in these axes ((2.0 - 0.2) x ~86.5 kg wetted mass):
+         sway and heave keep their old total damping (400 + 173 = 556 + 17, 800 + 173 = 956 + 17) -->
+    <xacro:arg name="yV" default="556.0"/>
+    <xacro:arg name="zW" default="956.0"/>
+    <xacro:arg name="kP" default="150.0"/>
+    <xacro:arg name="mQ" default="1000.0"/>
+    <xacro:arg name="nR" default="600.0"/>
+    <!-- Quadratic drag. -->
+    <xacro:arg name="xUU" default="165.5"/>
+    <xacro:arg name="yVV" default="600.0"/>
+    <xacro:arg name="zWW" default="1000.0"/>
+    <xacro:arg name="kPP" default="200.0"/>
+    <xacro:arg name="mQQ" default="1200.0"/>
+    <xacro:arg name="nRR" default="800.0"/>
+
+    <gazebo>
+      <!-- ============ Buoyancy + drag (vrx::PolyhedraBuoyancyDrag) ====== -->
+      <plugin filename="libPolyhedraBuoyancyDrag.so" name="vrx::PolyhedraBuoyancyDrag">
+        <fluid_density>$(arg fluid_density)</fluid_density>
+        <fluid_level>$(arg fluid_level)</fluid_level>
+        <linear_drag>$(arg linear_drag)</linear_drag>
+        <angular_drag>$(arg angular_drag)</angular_drag>
+        <buoyancy name="hull_buoyancy">
+          <link_name>${namespace}/base_link</link_name>
+          <pose>$(arg buoy_pose)</pose>
+          <geometry>
+            <box>
+              <size>$(arg buoy_size_x) $(arg buoy_size_y) $(arg buoy_size_z)</size>
+            </box>
+          </geometry>
+        </buoyancy>
+        <wavefield>
+          <topic>$(arg wavefield_topic)</topic>
+        </wavefield>
+      </plugin>
+
+      <!-- ================= Hydrodynamic drag & added mass ============== -->
+      <plugin filename="libSimpleHydrodynamics.so" name="vrx::SimpleHydrodynamics">
+        <link_name>${namespace}/base_link</link_name>
+
+        <xDotU>$(arg xDotU)</xDotU>
+        <yDotV>$(arg yDotV)</yDotV>
+        <zDotW>$(arg zDotW)</zDotW>
+        <kDotP>$(arg kDotP)</kDotP>
+        <mDotQ>$(arg mDotQ)</mDotQ>
+        <nDotR>$(arg nDotR)</nDotR>
+
+        <xU>$(arg xU)</xU>
+        <yV>$(arg yV)</yV>
+        <zW>$(arg zW)</zW>
+        <kP>$(arg kP)</kP>
+        <mQ>$(arg mQ)</mQ>
+        <nR>$(arg nR)</nR>
+
+        <xUU>$(arg xUU)</xUU>
+        <yVV>$(arg yVV)</yVV>
+        <zWW>$(arg zWW)</zWW>
+        <kPP>$(arg kPP)</kPP>
+        <mQQ>$(arg mQQ)</mQQ>
+        <nRR>$(arg nRR)</nRR>
+      </plugin>
+    </gazebo>
+  </xacro:macro>
+</robot>

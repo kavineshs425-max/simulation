@@ -1,0 +1,44 @@
+# =============================================================================
+# thrusters.yaml  -  ros_gz_bridge configuration for the my_boat propulsion bus
+# =============================================================================
+# Bridges the four command topics the propulsion plugins listen on, from ROS 2
+# into Gazebo. A downstream ROS 2 force allocator / DP controller publishes to
+# the ROS side; Gazebo's Thruster + JointPositionController plugins consume them.
+#
+# Run with:
+#   ros2 run ros_gz_bridge parameter_bridge \
+#       --ros-args -p config_file:=<this file>
+# (the spawn launch can also start it automatically; see docs/THRUSTERS.md)
+#
+# Message types:
+#   thrust commands  -> std_msgs/Float64  <-> gz.msgs.Double   (Newtons)
+#   steering command -> std_msgs/Float64  <-> gz.msgs.Double   (radians)
+# =============================================================================
+
+# --- T1: port bow tunnel thruster (APISQUEEN U92 Pro, +/-98 N) ---------------
+- ros_topic_name: "/my_boat/thrusters/T1/thrust"
+  gz_topic_name:  "/my_boat/thrusters/T1/thrust"
+  ros_type_name:  "std_msgs/msg/Float64"
+  gz_type_name:   "gz.msgs.Double"
+  direction: ROS_TO_GZ
+
+# --- T2: starboard bow tunnel thruster (APISQUEEN U92 Pro, +/-98 N) ----------
+- ros_topic_name: "/my_boat/thrusters/T2/thrust"
+  gz_topic_name:  "/my_boat/thrusters/T2/thrust"
+  ros_type_name:  "std_msgs/msg/Float64"
+  gz_type_name:   "gz.msgs.Double"
+  direction: ROS_TO_GZ
+
+# --- T3: stern drive surge thrust (Torqeedo Cruise 3.0 R, +/-632 N) ----------
+- ros_topic_name: "/my_boat/thrusters/T3/thrust"
+  gz_topic_name:  "/my_boat/thrusters/T3/thrust"
+  ros_type_name:  "std_msgs/msg/Float64"
+  gz_type_name:   "gz.msgs.Double"
+  direction: ROS_TO_GZ
+
+# --- T3: steering angle (ServoCity HD linear servo, +/-0.3665 rad = +/-21 deg)-
+- ros_topic_name: "/my_boat/thrusters/T3/pos"
+  gz_topic_name:  "/my_boat/thrusters/T3/pos"
+  ros_type_name:  "std_msgs/msg/Float64"
+  gz_type_name:   "gz.msgs.Double"
+  direction: ROS_TO_GZ

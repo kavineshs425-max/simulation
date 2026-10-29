@@ -1,0 +1,8 @@
+# Mooring pile / navigation pole: 0.4 m wide, 5 m long, 3 m out of the water
+# Generated with trimesh (matte PBR, so it does not render black).
+mesh: pile.glb
+forward_axis: +x
+up_axis: +z
+draft: 2.0
+class: pillar
+collision: box

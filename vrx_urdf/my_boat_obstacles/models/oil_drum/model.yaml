@@ -1,0 +1,8 @@
+# Floating 200 L oil drum lying on its side (0.6 m x 0.9 m) -- small, low, hard to see
+# Generated with trimesh (matte PBR, so it does not render black).
+mesh: oil_drum.glb
+forward_axis: +x
+up_axis: +z
+draft: 0.4
+class: debris
+collision: box

@@ -1,0 +1,132 @@
+<?xml version="1.0"?>
+<!--
+  log.urdf.xacro
+  ==============
+  URDF description for a floating cylindrical log.
+
+  Geometry
+  ========
+    Shape  : Solid cylinder
+    Length : 2.0 m  (along the X-axis of base_link)
+    Radius : 0.15 m
+
+  Inertial (solid cylinder, axis along X)
+  =======================================
+    Mass : 50 kg
+    Ixx  = 0.5  * m * r²           = 0.562500  kg·m²
+    Iyy  = (1/12) * m * (3r² + L²) = 16.947917 kg·m²
+    Izz  = Iyy                      = 16.947917 kg·m²
+
+  Extensibility notes
+  ===================
+  This file intentionally defines only the single rigid body (base_link).
+  Future phases may append:
+    - <gazebo> blocks for buoyancy / hydrodynamic plugins
+    - <joint> / <link> elements for thrusters, IMU, GPS masts
+  without altering the base_link definition below.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="floating_log">
+
+  <!-- ================================================================
+       Parameters — change once, apply everywhere
+       ================================================================ -->
+  <xacro:property name="log_length" value="2.0" />   <!-- metres -->
+  <xacro:property name="log_radius" value="0.15" />  <!-- metres -->
+  <xacro:property name="log_mass"   value="50.0" />  <!-- kg     -->
+
+  <!-- Pre-computed inertia tensor (solid cylinder, axis = X) -->
+  <xacro:property name="ixx" value="0.562500"  />  <!-- 0.5  * m * r²           -->
+  <xacro:property name="iyy" value="16.947917" />  <!-- (1/12) * m * (3r² + L²) -->
+  <xacro:property name="izz" value="16.947917" />  <!-- == iyy (axial symmetry)  -->
+
+  <!-- ================================================================
+       base_link — single rigid body, root of the kinematic tree
+       ================================================================
+       The cylinder's geometric axis is aligned with the URDF X-axis.
+       A 90-degree rotation about Z maps the URDF default (Z-axis
+       cylinder) to the X-axis orientation used here.
+       ================================================================ -->
+  <link name="base_link">
+
+    <!-- ── Inertial ─────────────────────────────────────────────── -->
+    <inertial>
+      <!-- CoM at the geometric centre of the cylinder -->
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="${log_mass}" />
+      <inertia
+        ixx="${ixx}"  ixy="0" ixz="0"
+                      iyy="${iyy}" iyz="0"
+                                   izz="${izz}" />
+    </inertial>
+
+    <!-- ── Visual ───────────────────────────────────────────────── -->
+    <!--
+      URDF cylinder primitives are defined with their axis along Z.
+      Rotating π/2 about Y realigns that axis to X, so the log
+      appears horizontal (bow-to-stern along the body X-axis).
+    -->
+    <visual>
+      <origin xyz="0 0 0" rpy="0 ${pi/2} 0" />
+      <geometry>
+        <cylinder radius="${log_radius}" length="${log_length}" />
+      </geometry>
+      <material name="wood_brown">
+        <color rgba="0.55 0.35 0.15 1.0" />
+      </material>
+    </visual>
+
+    <!-- ── Collision ─────────────────────────────────────────────── -->
+    <!--
+      Collision geometry is identical to visual geometry.
+      Same rotation applied so physics and visuals stay coincident.
+    -->
+    <collision>
+      <origin xyz="0 0 0" rpy="0 ${pi/2} 0" />
+      <geometry>
+        <cylinder radius="${log_radius}" length="${log_length}" />
+      </geometry>
+    </collision>
+
+  </link>
+
+  <!-- ================================================================
+       Gazebo material hint (Gazebo Garden / gz-sim)
+       ================================================================ -->
+  <gazebo reference="base_link">
+    <material>Gazebo/Wood</material>
+  </gazebo>
+
+  <!--
+    ================================================================
+    EXTENSION POINTS — do not remove these comments
+    ================================================================
+
+    Buoyancy plugin (phase 2):
+      <gazebo>
+        <plugin filename="gz-sim-buoyancy-system" name="buoyancy">
+          ...
+        </plugin>
+      </gazebo>
+
+    Hydrodynamics plugin (phase 2):
+      <gazebo reference="base_link">
+        <plugin filename="gz-sim-hydrodynamics-system" name="hydrodynamics">
+          ...
+        </plugin>
+      </gazebo>
+
+    IMU link (phase 3):
+      <joint name="imu_joint" type="fixed"> ... </joint>
+      <link  name="imu_link">              ... </link>
+
+    GPS link (phase 3):
+      <joint name="gps_joint" type="fixed"> ... </joint>
+      <link  name="gps_link">              ... </link>
+
+    Thruster joints (phase 4):
+      <joint name="thruster_joint" type="continuous"> ... </joint>
+      <link  name="thruster_link">                   ... </link>
+    ================================================================
+  -->
+
+</robot>

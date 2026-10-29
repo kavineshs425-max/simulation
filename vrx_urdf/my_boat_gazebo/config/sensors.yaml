@@ -1,0 +1,75 @@
+# =============================================================================
+# sensors.yaml  -  ros_gz_bridge configuration for the my_boat sensor stack
+# =============================================================================
+# Bridges the Gazebo IMU and GPS sensor topics to ROS 2 so they can feed
+# robot_localization (navsat_transform_node + ekf_localization_node).
+#
+# Run (the spawn launch does this for you):
+#   ros2 run ros_gz_bridge parameter_bridge \
+#       --ros-args -p config_file:=<this file>
+#
+#   Gazebo sensor topic        ROS 2 topic     ROS type                 GZ type
+#   -------------------------  --------------  -----------------------  -------------------------
+#   /my_boat/imu/data          /imu/data       sensor_msgs/Imu          gz.msgs.IMU
+#   /my_boat/gps/fix           /gps/fix        sensor_msgs/NavSatFix    gz.msgs.NavSat
+#   /my_boat/lidar/points      /lidar/points   sensor_msgs/PointCloud2  gz.msgs.PointCloudPacked
+#   /my_boat/camera             /camera/image_raw    sensor_msgs/Image       gz.msgs.Image
+#   /my_boat/camera_info        /camera/camera_info  sensor_msgs/CameraInfo  gz.msgs.CameraInfo
+#   /my_boat/camera             /webcam/image_raw    sensor_msgs/Image       gz.msgs.Image
+#   /my_boat/camera_info        /webcam/camera_info  sensor_msgs/CameraInfo  gz.msgs.CameraInfo
+#
+# The /webcam/* pair carries the SAME camera under the real boat's topic names,
+# so a detector written against the real webcam runs unchanged in the sim.
+# =============================================================================
+
+# --- IMU (orientation + angular_velocity + linear_acceleration) --------------
+- ros_topic_name: "/imu/data"
+  gz_topic_name:  "/my_boat/imu/data"
+  ros_type_name:  "sensor_msgs/msg/Imu"
+  gz_type_name:   "gz.msgs.IMU"
+  direction: GZ_TO_ROS
+
+# --- GPS / NavSat (latitude + longitude + altitude) --------------------------
+- ros_topic_name: "/gps/fix"
+  gz_topic_name:  "/my_boat/gps/fix"
+  ros_type_name:  "sensor_msgs/msg/NavSatFix"
+  gz_type_name:   "gz.msgs.NavSat"
+  direction: GZ_TO_ROS
+
+# --- LiDAR (LSLiDAR C32 point cloud; gpu_lidar publishes on <topic>/points) ---
+- ros_topic_name: "/lidar/points"
+  gz_topic_name:  "/my_boat/lidar/points"
+  ros_type_name:  "sensor_msgs/msg/PointCloud2"
+  gz_type_name:   "gz.msgs.PointCloudPacked"
+  direction: GZ_TO_ROS
+
+# --- Camera image (placed w.r.t the lidar; see my_boat_sensors.xacro) ---------
+- ros_topic_name: "/camera/image_raw"
+  gz_topic_name:  "/my_boat/camera"
+  ros_type_name:  "sensor_msgs/msg/Image"
+  gz_type_name:   "gz.msgs.Image"
+  direction: GZ_TO_ROS
+
+# --- Camera info (intrinsics from intrenstic_param.txt) -----------------------
+# gz camera sensors publish camera_info NEXT TO the image topic, not under it:
+# <topic>/my_boat/camera</topic> -> /my_boat/camera_info. The old name here
+# (/my_boat/camera/camera_info) matched nothing, so /camera/camera_info was
+# never published.
+- ros_topic_name: "/camera/camera_info"
+  gz_topic_name:  "/my_boat/camera_info"
+  ros_type_name:  "sensor_msgs/msg/CameraInfo"
+  gz_type_name:   "gz.msgs.CameraInfo"
+  direction: GZ_TO_ROS
+
+# --- the same camera under the REAL boat's webcam topic names -----------------
+- ros_topic_name: "/webcam/image_raw"
+  gz_topic_name:  "/my_boat/camera"
+  ros_type_name:  "sensor_msgs/msg/Image"
+  gz_type_name:   "gz.msgs.Image"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/webcam/camera_info"
+  gz_topic_name:  "/my_boat/camera_info"
+  ros_type_name:  "sensor_msgs/msg/CameraInfo"
+  gz_type_name:   "gz.msgs.CameraInfo"
+  direction: GZ_TO_ROS

@@ -1,0 +1,244 @@
+<?xml version="1.0"?>
+<!--
+  my_boat_engine.xacro
+  ====================
+  Kinematic description (links + joints) of the custom propulsion hardware.
+  The only reused WAM-V mesh is propeller.dae, used on the three propeller
+  links (the parts that actually spin / act as a joint). The PHYSICS (forces)
+  is added by my_boat_thruster_config.xacro, exactly as VRX splits
+  wamv_description/.../engine.xacro (bodies) from
+  wamv_gazebo/.../wamv_gazebo_thruster_config.xacro (plugins).
+
+  Two macros:
+    * bow_thruster  -> APISQUEEN U92 Pro (T1, T2). A bare propeller attached
+                       DIRECTLY to base_link by a continuous joint (NO housing,
+                       NO shaft). Thrust is lateral (sway + yaw).
+    * stern_drive   -> Torqeedo Cruise 3.0 R (T3). The ONLY unit with a shaft:
+                       a steerable vertical leg (cylinder) carrying the prop;
+                       surge thrust, vectored in yaw by the steering joint.
+
+  ===========================================================================
+  FRAME & PLACEMENT  (authoritative: utils/VRX_Thruster_Configuration.docx)
+  ===========================================================================
+  Body-fixed, origin at the Centre of Mass (C). +X bow, -X stern, +Y port,
+  -Y starboard, +Z up. base_link IS C.
+
+    Thruster | X     | Y     | Z     | Yaw(rad) | Facing | Fwd-rot thrust
+    .........|.......|.......|.......|..........|........|................
+    T1 (port)| +1.03 | +0.74 | -0.23 | -1.5708  |  -Y    |  -Y (starboard)
+    T2 (stbd)| +1.03 | -0.74 | -0.23 | -1.5708  |  -Y    |  -Y (starboard)
+    T3 stern | -1.50 |  0.00 | -0.25 | +3.1416  |  -X    |  +X (forward)
+    T3 shaft length 0.40 m ; steering +/-21 deg (42 deg total) about +Z.
+
+  The bow pair is PARALLEL (both starboard-positive), matching the allocator's
+  t1_dir = t2_dir = -1. T2's physical mirroring is carried by its ASYMMETRIC
+  thrust limits, not by its mount yaw. See my_boat_thruster_layout.xacro.
+
+  ===========================================================================
+  THRUST DIRECTION RULE (gz-sim Thruster system)
+  ===========================================================================
+  The Thruster plugin applies its force along the PROPELLER joint <axis>,
+  expressed in the propeller-link frame and rotated into the world. So a unit's
+  thrust direction = R(chain) * axis. We place each unit with the yaw above and
+  pick the propeller <axis> so that a POSITIVE thrust command gives the stated
+  "Fwd-rot thrust":
+    T1: yaw -90 deg, axis +X  -> +X(local) = -Y(world)  -> starboard  (OK)
+    T2: yaw -90 deg, axis +X  -> +X(local) = -Y(world)  -> starboard  (OK)
+    T3: yaw 180 deg, axis -X  -> -X(local) = +X(world)  -> forward     (OK)
+  Steering the T3 leg about +Z then vectors that +X thrust in yaw.
+-->
+<robot xmlns:xacro="http://ros.org/wiki/xacro" name="my_boat_engine">
+
+  <!-- ====================================================================
+       Reusable inertia helper: solid cylinder about its own axis (x = axis).
+       ==================================================================== -->
+  <xacro:macro name="cyl_inertia" params="mass radius length">
+    <inertia
+      ixx="${0.5*mass*radius*radius}"
+      iyy="${mass*(3*radius*radius + length*length)/12.0}"
+      izz="${mass*(3*radius*radius + length*length)/12.0}"
+      ixy="0.0" ixz="0.0" iyz="0.0"/>
+  </xacro:macro>
+
+  <!-- ====================================================================
+       BOW THRUSTER (T1 / T2)  -  APISQUEEN U92 Pro.
+       ....................................................................
+       A bare reversible propeller, NO housing and NO shaft. The propeller
+       link is the child of a continuous joint whose parent is base_link; the
+       joint's origin carries the unit's position and yaw, and its axis is the
+       (aimed) thrust axis. Equal commands on T1/T2 give pure sway; opposite
+       commands give a pure yaw couple (both sit forward of C).
+         prefix   : T1 | T2
+         position : "x y z" of the propeller in base_link (C) frame
+         yaw      : mount yaw (rad); -pi/2 for BOTH T1 and T2 (see table)
+       ==================================================================== -->
+  <xacro:macro name="bow_thruster" params="prefix position yaw">
+
+    <!-- Propeller: visual = reused WAM-V propeller.dae; spins about local X and
+         the plugin applies thrust along that same axis. -->
+    <link name="${namespace}/${prefix}_propeller_link">
+      <visual>
+        <!-- propeller.dae faces / spins about its local X (no extra rotation) -->
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="model://propeller/mesh/propeller.dae" scale="0.42 0.42 0.42"/>
+        </geometry>
+      </visual>
+      <collision name="${prefix}_propeller_collision">
+        <!-- thin disc whose normal is local X (cylinder axis laid along X) -->
+        <origin xyz="0 0 0" rpy="0 1.5708 0"/>
+        <geometry>
+          <cylinder radius="0.06" length="0.04"/>
+        </geometry>
+      </collision>
+      <inertial>
+        <mass value="2.5"/>   <!-- whole U92 Pro pod, lumped into the propeller -->
+        <xacro:cyl_inertia mass="2.5" radius="0.06" length="0.10"/>
+      </inertial>
+    </link>
+
+    <!-- base_link -> propeller (continuous). Origin = position + yaw; axis is
+         local X (= the aimed lateral thrust direction). The Thruster plugin
+         both spins this joint and applies the thrust force along it. -->
+    <joint name="${namespace}/${prefix}_propeller_joint" type="continuous">
+      <origin xyz="${position}" rpy="0 0 ${yaw}"/>
+      <axis xyz="1 0 0"/>
+      <parent link="${namespace}/base_link"/>
+      <child  link="${namespace}/${prefix}_propeller_link"/>
+      <limit effort="100" velocity="200"/>
+      <dynamics friction="0.0" damping="0.01"/>
+    </joint>
+
+  </xacro:macro>
+
+  <!-- ====================================================================
+       STERN DRIVE (T3)  -  Torqeedo Cruise 3.0 R on a steerable leg.
+       ....................................................................
+       The ONLY unit with a shaft. Chain (required architecture):
+         base_link
+           =(fixed, yaw)============> steering_mount_link
+           =(revolute, z, +/-21deg)=> shaft_link        [steering_joint]
+           =(continuous, x)=========> propeller_link     [propeller_rotation_joint]
+       The leg (shaft cylinder + prop) swings under the steering joint, so the
+       surge thrust is vectored in yaw. The motor itself is NOT steerable
+       (Torqeedo); the steering_joint models the external linear-actuator.
+         pivot     : "x y z" of the vertical steering axis in base_link (C) frame
+         yaw       : mount yaw (rad); +pi to face the prop aft (-X) -> +X thrust
+         prop_drop : shaft length below the pivot (m) -> propeller depth
+         prop_aft  : aft offset of the prop from the pivot (m); 0 = on the axis
+       ==================================================================== -->
+  <xacro:macro name="stern_drive" params="prefix pivot yaw:='3.1416' prop_drop:='0.40' prop_aft:='0.0'">
+
+    <!-- Fixed bracket that carries the steering pivot. -->
+    <link name="${namespace}/${prefix}_steering_mount_link">
+      <visual>
+        <origin xyz="0 0 0.05" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.18 0.18 0.20"/>
+        </geometry>
+        <material name="mount_grey"><color rgba="0.25 0.25 0.27 1.0"/></material>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0.05" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.18 0.18 0.20"/>
+        </geometry>
+      </collision>
+      <inertial>
+        <mass value="1.5"/>
+        <inertia ixx="0.02" iyy="0.02" izz="0.01" ixy="0" ixz="0" iyz="0"/>
+      </inertial>
+    </link>
+
+    <!-- Steerable leg: a single vertical shaft CYLINDER (dia 0.05 m), from the
+         steering pivot down to the propeller depth. The steering joint rotates
+         this body. -->
+    <link name="${namespace}/${prefix}_shaft_link">
+      <visual name="${prefix}_shaft_visual">
+        <origin xyz="0 0 ${-prop_drop/2}" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.025" length="${prop_drop}"/>
+        </geometry>
+        <material name="shaft_grey"><color rgba="0.3 0.3 0.32 1.0"/></material>
+      </visual>
+      <collision name="${prefix}_shaft_collision">
+        <origin xyz="0 0 ${-prop_drop/2}" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.03" length="${prop_drop}"/>
+        </geometry>
+      </collision>
+      <inertial>
+        <!-- leg ~12 kg, mass centred ~ halfway down the leg -->
+        <origin xyz="0 0 ${-prop_drop/2}" rpy="0 0 0"/>
+        <mass value="12.0"/>
+        <inertia ixx="0.6" iyy="0.6" izz="0.05" ixy="0" ixz="0" iyz="0"/>
+      </inertial>
+    </link>
+
+    <!-- Propeller (visual spin only; thrust is the plugin force). propeller.dae
+         naturally faces its local +X, so IDENTITY rpy keeps the blade disc
+         normal on local X = the spin/thrust axis. With the leg's 180-deg yaw
+         that points the blades aft (world -X) when steering is centred. -->
+    <link name="${namespace}/${prefix}_propeller_link">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="model://propeller/mesh/propeller.dae" scale="0.42 0.42 0.42"/>
+        </geometry>
+      </visual>
+      <collision name="${prefix}_propeller_collision">
+        <!-- thin disc, normal along local X (cylinder axis laid along X) -->
+        <origin xyz="0 0 0" rpy="0 1.5708 0"/>
+        <geometry>
+          <!-- Torqeedo prop, dia 0.10 m -->
+          <cylinder radius="0.05" length="0.05"/>
+        </geometry>
+      </collision>
+      <inertial>
+        <mass value="1.0"/>
+        <xacro:cyl_inertia mass="1.0" radius="0.05" length="0.05"/>
+      </inertial>
+    </link>
+
+    <!-- base_link -> steering bracket (rigid), aimed by 'yaw' (faces -X). -->
+    <joint name="${namespace}/${prefix}_mount_joint" type="fixed">
+      <origin xyz="${pivot}" rpy="0 0 ${yaw}"/>
+      <parent link="${namespace}/base_link"/>
+      <child  link="${namespace}/${prefix}_steering_mount_link"/>
+    </joint>
+
+    <!-- STEERING JOINT: revolute about vertical z, +/-21 deg. Driven by the
+         JointPositionController (see my_boat_thruster_config.xacro). Limits,
+         damping, friction, effort and velocity model the ServoCity linear servo
+         acting through a ~0.15 m tiller arm.
+         velocity 0.1885 rad/s = 10.8 deg/s is the MEASURED speed: the servo
+         does 125 us/s and the calibrated steering span is 1242-1728 us (486 us
+         for the full 42 deg), i.e. ~3.9 s end to end. The old 0.45 rad/s
+         (25.8 deg/s) was ~2.4x optimistic. Matches allocator_bollard.yaml
+         actuator.alpha_rate_max_deg_s; the plugin's cmd_max is what actually
+         enforces it, this limit keeps the URDF self-consistent. -->
+    <joint name="${namespace}/${prefix}_steering_joint" type="revolute">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <axis xyz="0 0 1"/>
+      <parent link="${namespace}/${prefix}_steering_mount_link"/>
+      <child  link="${namespace}/${prefix}_shaft_link"/>
+      <!-- -21 deg = -0.3665 rad, +21 deg = +0.3665 rad -->
+      <limit lower="-0.3665" upper="0.3665" effort="30.0" velocity="0.1885"/>
+      <dynamics damping="8.0" friction="3.0"/>
+    </joint>
+
+    <!-- PROPELLER ROTATION JOINT: continuous, visual-only spin. The Thruster
+         plugin spins it AND applies the surge force along this axis. axis=-X so
+         that (after the +180 deg mount yaw) a POSITIVE command thrusts +X. -->
+    <joint name="${namespace}/${prefix}_propeller_rotation_joint" type="continuous">
+      <origin xyz="${-prop_aft} 0 ${-prop_drop}" rpy="0 0 0"/>
+      <axis xyz="-1 0 0"/>
+      <parent link="${namespace}/${prefix}_shaft_link"/>
+      <child  link="${namespace}/${prefix}_propeller_link"/>
+      <limit effort="500" velocity="200"/>
+      <dynamics friction="0.0" damping="0.01"/>
+    </joint>
+
+  </xacro:macro>
+
+</robot>

@@ -1,0 +1,49 @@
+<?xml version="1.0"?>
+<!--
+  wind_obj_snippet.sdf
+  ====================
+  Wind integration for an EXISTING VRX world (e.g. vrx_gz/worlds/sydney_regatta.sdf).
+
+  The VRX wind plugin (vrx::USVWind) lives in the world file and pushes only the
+  links listed inside it. To make wind act on my_boat, paste the <wind_obj>
+  block below as a child of the world's existing USVWind <plugin>, alongside the
+  wamv entry. DO NOT add a second USVWind plugin.
+
+  Link-name rule (important): USVWind matches the link's OWN name. The boat's
+  link is named "my_boat/base_link" (namespace/base_link), so the link_name
+  below must be exactly that, and you must spawn the model with -name my_boat.
+-->
+
+<!-- ADD THIS BLOCK inside the existing <plugin name="vrx::USVWind"> element -->
+<wind_obj>
+  <name>my_boat</name>
+  <link_name>my_boat/base_link</link_name>
+  <coeff_vector>0.5 0.7 0.4</coeff_vector>
+</wind_obj>
+
+<!--
+  Resulting plugin (illustrative — existing wamv entry kept, boat added):
+
+  <plugin filename="libUSVWind.so" name="vrx::USVWind">
+    <wind_obj>
+      <name>wamv</name>
+      <link_name>wamv/base_link</link_name>
+      <coeff_vector>.5 .5 .33</coeff_vector>
+    </wind_obj>
+
+    <wind_obj>
+      <name>my_boat</name>
+      <link_name>my_boat/base_link</link_name>
+      <coeff_vector>0.5 0.7 0.4</coeff_vector>
+    </wind_obj>
+
+    <wind_direction>240</wind_direction>
+    <wind_mean_velocity>5.55556</wind_mean_velocity>
+    <var_wind_gain_constants>2</var_wind_gain_constants>
+    <var_wind_time_constants>1</var_wind_time_constants>
+    <random_seed>6</random_seed>
+    <update_rate>10</update_rate>
+    <topic_wind_speed>/vrx/debug/wind/speed</topic_wind_speed>
+    <topic_wind_direction>/vrx/debug/wind/direction</topic_wind_direction>
+  </plugin>
+-->

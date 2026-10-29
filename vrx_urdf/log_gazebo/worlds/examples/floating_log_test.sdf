@@ -1,0 +1,175 @@
+<?xml version="1.0"?>
+<!--
+  floating_log_test.sdf
+  =====================
+  Self-contained Gazebo Garden world for quickly validating buoyancy,
+  hydrodynamic drag and wind on the floating_log WITHOUT the full VRX stack.
+
+  Water here is a calm flat surface at z = 0 (no wave field). That is ideal
+  for Tests 1 to 4 and Test 6 (spawn, fall, float, settle, disturbance, wind)
+  and for the 5 minute stability soak (Test 7).
+
+  Wave interaction (Test 5 / Phase 3) must be validated in the real VRX world
+  (for example sydney_regatta), because the requirement is explicitly to ride
+  the SAME shared VRX wavefield as the WAM-V rather than a separate simulator.
+
+  Run:
+    gz sim -r src/log_gazebo/worlds/examples/floating_log_test.sdf
+  This world embeds the log directly, so no extra spawn step is needed.
+  It requires libSurface.so, libSimpleHydrodynamics.so and libUSVWind.so to be
+  on the Gazebo plugin path, which they are inside a built VRX workspace.
+-->
+<sdf version="1.9">
+  <world name="floating_log_test">
+
+    <physics name="1ms" type="ode">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-contact-system" name="gz::sim::systems::Contact"/>
+
+    <!-- VRX wind. The floating_log is already listed as a wind object. -->
+    <plugin filename="libUSVWind.so" name="vrx::USVWind">
+      <wind_obj>
+        <name>floating_log</name>
+        <link_name>floating_log/base_link</link_name>
+        <coeff_vector>0.5 0.5 0.33</coeff_vector>
+      </wind_obj>
+      <wind_direction>240</wind_direction>
+      <wind_mean_velocity>5.0</wind_mean_velocity>
+      <var_wind_gain_constants>0</var_wind_gain_constants>
+      <var_wind_time_constants>2</var_wind_time_constants>
+      <random_seed>10</random_seed>
+      <update_rate>10</update_rate>
+      <topic_wind_speed>/vrx/debug/wind/speed</topic_wind_speed>
+      <topic_wind_direction>/vrx/debug/wind/direction</topic_wind_direction>
+    </plugin>
+
+    <gravity>0 0 -9.8</gravity>
+
+    <scene>
+      <ambient>1.0 1.0 1.0 1.0</ambient>
+      <background>0.5 0.7 0.9 1.0</background>
+    </scene>
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.9 0.9 0.9 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <!-- Calm water surface at z = 0 (visual only, log floats via Surface). -->
+    <model name="water_plane">
+      <static>true</static>
+      <link name="water_link">
+        <visual name="water_visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>200 200</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>0.0 0.3 0.5 0.7</ambient>
+            <diffuse>0.0 0.35 0.55 0.7</diffuse>
+            <specular>0.2 0.3 0.4 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ================================================================
+         The floating log, with VRX marine plugins attached.
+         Spawned 1 m above the surface so it falls in and settles.
+         ================================================================ -->
+    <model name="floating_log">
+      <pose>0 0 1.0 0 0 0</pose>
+      <enable_wind>true</enable_wind>
+
+      <link name="base_link">
+        <inertial>
+          <mass>50.0</mass>
+          <inertia>
+            <ixx>0.562500</ixx>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyy>16.947917</iyy>
+            <iyz>0</iyz>
+            <izz>16.947917</izz>
+          </inertia>
+        </inertial>
+
+        <visual name="log_visual">
+          <pose>0 0 0 0 1.5707963 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.15</radius>
+              <length>2.0</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.55 0.35 0.15 1</ambient>
+            <diffuse>0.55 0.35 0.15 1</diffuse>
+            <specular>0.1 0.08 0.05 1</specular>
+          </material>
+        </visual>
+
+        <collision name="log_collision">
+          <pose>0 0 0 0 1.5707963 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.15</radius>
+              <length>2.0</length>
+            </cylinder>
+          </geometry>
+        </collision>
+      </link>
+
+      <!-- Phase 1: Buoyancy -->
+      <plugin filename="libSurface.so" name="vrx::Surface">
+        <link_name>base_link</link_name>
+        <hull_length>2.0</hull_length>
+        <hull_radius>0.15</hull_radius>
+        <fluid_level>0.0</fluid_level>
+        <fluid_density>1000.0</fluid_density>
+        <points>
+          <point>0.8 0 0</point>
+          <point>0.4 0 0</point>
+          <point>0.0 0 0</point>
+          <point>-0.4 0 0</point>
+          <point>-0.8 0 0</point>
+        </points>
+      </plugin>
+
+      <!-- Phase 2: Hydrodynamic drag and added mass -->
+      <plugin filename="libSimpleHydrodynamics.so" name="vrx::SimpleHydrodynamics">
+        <link_name>base_link</link_name>
+        <xDotU>-5.0</xDotU>
+        <yDotV>-40.0</yDotV>
+        <zDotW>-40.0</zDotW>
+        <kDotP>-1.0</kDotP>
+        <mDotQ>-15.0</mDotQ>
+        <nDotR>-15.0</nDotR>
+        <xU>20.0</xU>
+        <yV>60.0</yV>
+        <zW>120.0</zW>
+        <kP>5.0</kP>
+        <mQ>80.0</mQ>
+        <nR>50.0</nR>
+        <xUU>30.0</xUU>
+        <yVV>80.0</yVV>
+        <zWW>150.0</zWW>
+        <kPP>8.0</kPP>
+        <mQQ>100.0</mQQ>
+        <nRR>70.0</nRR>
+      </plugin>
+    </model>
+
+  </world>
+</sdf>

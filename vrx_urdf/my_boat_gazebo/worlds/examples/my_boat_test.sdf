@@ -1,0 +1,219 @@
+<?xml version="1.0"?>
+<!--
+  my_boat_test.sdf
+  ================
+  Self-contained Gazebo Garden world for validating buoyancy, hydrodynamic
+  drag, waves and wind on my_boat WITHOUT the full VRX competition stack.
+  Mirrors VRX's plugin wiring (Surface + SimpleHydrodynamics + USVWind +
+  the wavefield PublisherPlugin on /vrx/wavefield/parameters).
+
+  Run:
+    gz sim -r $(ros2 pkg prefix my_boat_gazebo)/share/my_boat_gazebo/worlds/examples/my_boat_test.sdf
+  The boat is embedded with all plugins attached, so no separate spawn is
+  needed. Requires libSurface.so, libSimpleHydrodynamics.so and libUSVWind.so
+  on the Gazebo plugin path (true inside a built VRX workspace) and the
+  my_boat_description models dir on GZ_SIM_RESOURCE_PATH (set by its hooks).
+
+  The embedded body is kept in sync with my_boat_description/urdf/
+  my_boat_base.urdf.xacro: link "my_boat/base_link", CG-centred, mesh scaled
+  0.001 with pose -0.47 0 -0.49 / rpy 1.5708 0 1.5708, simplified box collision.
+-->
+<sdf version="1.9">
+  <world name="my_boat_test">
+
+    <physics name="1ms" type="ode">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-contact-system" name="gz::sim::systems::Contact"/>
+
+    <!-- Sensor systems so the my_boat IMU + GPS produce data. (VRX competition
+         worlds already include these; added here for the standalone world.) -->
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu"/>
+    <plugin filename="gz-sim-navsat-system" name="gz::sim::systems::NavSat"/>
+
+    <!-- Datum for the NavSat/GPS sensor to convert ENU -> lat/lon/alt.
+         (Matches the VRX Sydney Regatta datum.) -->
+    <spherical_coordinates>
+      <surface_model>EARTH_WGS84</surface_model>
+      <world_frame_orientation>ENU</world_frame_orientation>
+      <latitude_deg>-33.724223</latitude_deg>
+      <longitude_deg>150.679736</longitude_deg>
+      <elevation>0.0</elevation>
+      <heading_deg>0.0</heading_deg>
+    </spherical_coordinates>
+
+    <!-- VRX wind. my_boat is already registered as a wind object. -->
+    <plugin filename="libUSVWind.so" name="vrx::USVWind">
+      <wind_obj>
+        <name>my_boat</name>
+        <link_name>my_boat/base_link</link_name>
+        <coeff_vector>0.5 0.7 0.4</coeff_vector>
+      </wind_obj>
+      <wind_direction>240</wind_direction>
+      <wind_mean_velocity>5.0</wind_mean_velocity>
+      <var_wind_gain_constants>2</var_wind_gain_constants>
+      <var_wind_time_constants>1</var_wind_time_constants>
+      <random_seed>10</random_seed>
+      <update_rate>10</update_rate>
+      <topic_wind_speed>/vrx/debug/wind/speed</topic_wind_speed>
+      <topic_wind_direction>/vrx/debug/wind/direction</topic_wind_direction>
+    </plugin>
+
+    <!-- VRX wavefield parameters (same topic the Surface plugins subscribe to).
+         Gives the boat heave/roll/pitch under waves (Test 4). Set gain to 0 for
+         the calm-water tests (1,2,3,6,7). -->
+    <plugin filename="libPublisherPlugin.so" name="vrx::PublisherPlugin">
+      <message type="gz.msgs.Param" topic="/vrx/wavefield/parameters" every="2.0">
+        params {
+          key: "direction"
+          value { type: DOUBLE double_value: 0.0 }
+        }
+        params {
+          key: "gain"
+          value { type: DOUBLE double_value: 0.3 }
+        }
+        params {
+          key: "period"
+          value { type: DOUBLE double_value: 3.0 }
+        }
+        params {
+          key: "steepness"
+          value { type: DOUBLE double_value: 1.0 }
+        }
+      </message>
+    </plugin>
+
+    <gravity>0 0 -9.8</gravity>
+
+    <scene>
+      <ambient>1.0 1.0 1.0 1.0</ambient>
+      <background>0.5 0.7 0.9 1.0</background>
+    </scene>
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.9 0.9 0.9 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <!-- Calm water surface at z = 0 (visual only; buoyancy is via Surface). -->
+    <model name="water_plane">
+      <static>true</static>
+      <link name="water_link">
+        <visual name="water_visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>500 500</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>0.0 0.3 0.5 0.7</ambient>
+            <diffuse>0.0 0.35 0.55 0.7</diffuse>
+            <specular>0.2 0.3 0.4 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ================================================================
+         my_boat with VRX marine plugins. Spawned ~1.3 m above the surface
+         so it falls in and settles (Test 2). Link is "my_boat/base_link".
+         ================================================================ -->
+    <model name="my_boat">
+      <pose>0 0 0.8 0 0 0</pose>
+      <enable_wind>true</enable_wind>
+
+      <link name="my_boat/base_link">
+        <inertial>
+          <pose>0 0 0 0 0 0</pose>
+          <mass>420.0</mass>
+          <inertia>
+            <ixx>100.22</ixx>
+            <ixy>0.0</ixy>
+            <ixz>-5.48</ixz>
+            <iyy>606.43</iyy>
+            <iyz>0.0</iyz>
+            <izz>652.79</izz>
+          </inertia>
+        </inertial>
+
+        <visual name="hull_visual">
+          <pose>-2.3145 -0.9245 -0.4916 1.5707963 0 1.5707963</pose>
+          <geometry>
+            <mesh>
+              <uri>model://my_boat/mesh/my_boat_hull.stl</uri>
+              <scale>0.001 0.001 0.001</scale>
+            </mesh>
+          </geometry>
+          <material>
+            <ambient>0.80 0.66 0.42 1</ambient>
+            <diffuse>0.80 0.66 0.42 1</diffuse>
+            <specular>0.2 0.2 0.2 1</specular>
+          </material>
+        </visual>
+
+        <collision name="hull_collision">
+          <pose>-0.23 0 -0.025 0 0 0</pose>
+          <geometry>
+            <box><size>4.0 1.7 0.85</size></box>
+          </geometry>
+        </collision>
+      </link>
+
+      <!-- Buoyancy + drag (vrx::PolyhedraBuoyancyDrag): submerged-volume of the
+           box gives Archimedes lift; box sized so the 420 kg boat floats
+           touching the water at ~0.10 m draft, upright (GM ~ +0.7 m). -->
+      <plugin filename="libPolyhedraBuoyancyDrag.so" name="vrx::PolyhedraBuoyancyDrag">
+        <fluid_density>1000.0</fluid_density>
+        <fluid_level>0.0</fluid_level>
+        <linear_drag>2.0</linear_drag>
+        <angular_drag>1.0</angular_drag>
+        <buoyancy name="hull_buoyancy">
+          <link_name>my_boat/base_link</link_name>
+          <pose>0 0 -0.25 0 0 0</pose>
+          <geometry>
+            <box><size>3.4 1.2 0.5</size></box>
+          </geometry>
+        </buoyancy>
+        <wavefield>
+          <topic>/vrx/wavefield/parameters</topic>
+        </wavefield>
+      </plugin>
+
+      <!-- Hydrodynamic drag and added mass -->
+      <plugin filename="libSimpleHydrodynamics.so" name="vrx::SimpleHydrodynamics">
+        <link_name>my_boat/base_link</link_name>
+        <xDotU>-20.0</xDotU>
+        <yDotV>-200.0</yDotV>
+        <zDotW>-150.0</zDotW>
+        <kDotP>-20.0</kDotP>
+        <mDotQ>-200.0</mDotQ>
+        <nDotR>-100.0</nDotR>
+        <xU>150.0</xU>
+        <yV>400.0</yV>
+        <zW>800.0</zW>
+        <kP>150.0</kP>
+        <mQ>1000.0</mQ>
+        <nR>600.0</nR>
+        <xUU>200.0</xUU>
+        <yVV>600.0</yVV>
+        <zWW>1000.0</zWW>
+        <kPP>200.0</kPP>
+        <mQQ>1200.0</mQQ>
+        <nRR>800.0</nRR>
+      </plugin>
+    </model>
+
+  </world>
+</sdf>

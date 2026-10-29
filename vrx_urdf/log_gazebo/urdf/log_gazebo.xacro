@@ -1,0 +1,132 @@
+<?xml version="1.0"?>
+<!--
+  log_gazebo.xacro
+  ================
+  Marine-simulation wrapper for the floating_log.
+
+  Mirrors the VRX wamv_description + wamv_gazebo separation:
+    - log_description  provides the pure body (base_link geometry + inertia)
+    - log_gazebo (this file) layers the VRX marine physics plugins on top
+
+  Plugins attached (all reused directly from VRX, none custom):
+    Phase 1 Buoyancy ......... vrx::Surface           (libSurface.so)
+    Phase 2 Hydrodynamics .... vrx::SimpleHydrodynamics(libSimpleHydrodynamics.so)
+    Phase 3 Waves ............ shared via Surface wavefield topic
+    Phase 4 Wind ............. enable_wind flag here + USVWind wind_obj in world
+
+  Every coefficient is exposed as a xacro:arg with a default that mirrors the
+  YAML files in config/. The launch file reads those YAML files and overrides
+  these args, so config/*.yaml is the single human-facing source of truth.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="floating_log">
+
+  <!-- Pull in the pure body definition from the description package. -->
+  <xacro:include filename="$(find log_description)/urdf/log.urdf.xacro"/>
+
+  <!-- =====================================================================
+       Configuration arguments (defaults mirror config/*.yaml)
+       ===================================================================== -->
+
+  <!-- Buoyancy (vrx::Surface) -->
+  <xacro:arg name="hull_length"   default="2.0"/>
+  <xacro:arg name="hull_radius"   default="0.15"/>
+  <xacro:arg name="fluid_level"   default="0.0"/>
+  <xacro:arg name="fluid_density" default="1000.0"/>
+  <xacro:arg name="wavefield_topic" default="/vrx/wavefield/parameters"/>
+
+  <!-- Hydrodynamics (vrx::SimpleHydrodynamics): added mass -->
+  <xacro:arg name="xDotU" default="-5.0"/>
+  <xacro:arg name="yDotV" default="-40.0"/>
+  <xacro:arg name="zDotW" default="-40.0"/>
+  <xacro:arg name="kDotP" default="-1.0"/>
+  <xacro:arg name="mDotQ" default="-15.0"/>
+  <xacro:arg name="nDotR" default="-15.0"/>
+
+  <!-- Hydrodynamics: linear drag -->
+  <xacro:arg name="xU" default="20.0"/>
+  <xacro:arg name="yV" default="60.0"/>
+  <xacro:arg name="zW" default="120.0"/>
+  <xacro:arg name="kP" default="5.0"/>
+  <xacro:arg name="mQ" default="80.0"/>
+  <xacro:arg name="nR" default="50.0"/>
+
+  <!-- Hydrodynamics: quadratic drag -->
+  <xacro:arg name="xUU" default="30.0"/>
+  <xacro:arg name="yVV" default="80.0"/>
+  <xacro:arg name="zWW" default="150.0"/>
+  <xacro:arg name="kPP" default="8.0"/>
+  <xacro:arg name="mQQ" default="100.0"/>
+  <xacro:arg name="nRR" default="70.0"/>
+
+  <!-- Wind opt-in -->
+  <xacro:arg name="enable_wind" default="true"/>
+
+  <!-- =====================================================================
+       Phase 4: opt the log in to the world wind system
+       The USVWind plugin in the world applies force to links flagged here.
+       ===================================================================== -->
+  <gazebo reference="base_link">
+    <enable_wind>$(arg enable_wind)</enable_wind>
+  </gazebo>
+
+  <!-- =====================================================================
+       Phase 1: Buoyancy (vrx::Surface)
+       The hull is modelled as a cylinder. Five sample points are spread
+       evenly along the body X-axis (the log's long axis); each represents
+       one fifth of the 2.0 m hull, giving smooth heave and pitch response.
+       The wavefield block ties this to the shared VRX wavefield (Phase 3),
+       so the log heaves, pitches and rolls with the same waves as the WAM-V.
+       ===================================================================== -->
+  <gazebo>
+    <plugin filename="libSurface.so" name="vrx::Surface">
+      <link_name>base_link</link_name>
+      <hull_length>$(arg hull_length)</hull_length>
+      <hull_radius>$(arg hull_radius)</hull_radius>
+      <fluid_level>$(arg fluid_level)</fluid_level>
+      <fluid_density>$(arg fluid_density)</fluid_density>
+      <points>
+        <point>0.8 0 0</point>
+        <point>0.4 0 0</point>
+        <point>0.0 0 0</point>
+        <point>-0.4 0 0</point>
+        <point>-0.8 0 0</point>
+      </points>
+      <wavefield>
+        <topic>$(arg wavefield_topic)</topic>
+      </wavefield>
+    </plugin>
+  </gazebo>
+
+  <!-- =====================================================================
+       Phase 2: Hydrodynamic drag and added mass (vrx::SimpleHydrodynamics)
+       Without this the log behaves like a frictionless float and bobs
+       forever. These terms make any disturbance decay over a few seconds.
+       ===================================================================== -->
+  <gazebo>
+    <plugin filename="libSimpleHydrodynamics.so" name="vrx::SimpleHydrodynamics">
+      <link_name>base_link</link_name>
+
+      <xDotU>$(arg xDotU)</xDotU>
+      <yDotV>$(arg yDotV)</yDotV>
+      <zDotW>$(arg zDotW)</zDotW>
+      <kDotP>$(arg kDotP)</kDotP>
+      <mDotQ>$(arg mDotQ)</mDotQ>
+      <nDotR>$(arg nDotR)</nDotR>
+
+      <xU>$(arg xU)</xU>
+      <yV>$(arg yV)</yV>
+      <zW>$(arg zW)</zW>
+      <kP>$(arg kP)</kP>
+      <mQ>$(arg mQ)</mQ>
+      <nR>$(arg nR)</nR>
+
+      <xUU>$(arg xUU)</xUU>
+      <yVV>$(arg yVV)</yVV>
+      <zWW>$(arg zWW)</zWW>
+      <kPP>$(arg kPP)</kPP>
+      <mQQ>$(arg mQQ)</mQQ>
+      <nRR>$(arg nRR)</nRR>
+    </plugin>
+  </gazebo>
+
+</robot>

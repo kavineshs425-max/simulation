@@ -1,0 +1,50 @@
+<?xml version="1.0"?>
+<!--
+  my_boat_gazebo.urdf.xacro
+  =========================
+  Top-level, spawnable description of the boat WITH marine physics. Analogue of
+  wamv_gazebo/urdf/wamv_gazebo.urdf.xacro, trimmed to the Phase-1 scope:
+  NO thrusters, motors, controllers, ros_control, IMU, GPS, cameras or LiDAR.
+
+  Process to plain URDF/SDF with, e.g.:
+    xacro my_boat_gazebo.urdf.xacro namespace:=my_boat > /tmp/my_boat.urdf
+  The spawn launch file does this for you and applies config/*.yaml overrides.
+-->
+<robot xmlns:xacro="http://ros.org/wiki/xacro" name="my_boat">
+
+  <!-- Namespace used for the link name and plugin link references. Keep the
+       spawn -name equal to this so USVWind's scoped link match works. -->
+  <xacro:arg name="namespace" default="my_boat"/>
+  <xacro:property name="namespace" value="$(arg namespace)" scope="global"/>
+
+  <!-- Bring in the boat + marine plugins macro and instantiate it. -->
+  <xacro:include filename="$(find my_boat_gazebo)/urdf/my_boat_gazebo.xacro"/>
+  <xacro:my_boat_gazebo/>
+
+  <!-- === TF / state publishing (parity with WAM-V, harmless for Phase 1) === -->
+  <gazebo>
+    <plugin filename="libgz-sim-pose-publisher-system.so"
+            name="gz::sim::systems::PosePublisher">
+      <publish_link_pose>false</publish_link_pose>
+      <publish_sensor_pose>false</publish_sensor_pose>
+      <publish_collision_pose>false</publish_collision_pose>
+      <publish_visual_pose>false</publish_visual_pose>
+      <publish_nested_model_pose>false</publish_nested_model_pose>
+      <publish_model_pose>true</publish_model_pose>
+      <use_pose_vector_msg>true</use_pose_vector_msg>
+      <static_publisher>false</static_publisher>
+      <static_update_frequency>1</static_update_frequency>
+    </plugin>
+
+    <!-- Gazebo's built-in joint-state publisher (parity with WAM-V). Publishes
+         every joint's position/velocity on the gz topic
+           /world/<world>/model/<model>/joint_state   (gz.msgs.Model)
+         which the spawn launch bridges to ROS /<ns>/joint_states so that
+         robot_state_publisher can broadcast the moving TF tree (the spinning
+         T1/T2/T3 propellers and the T3 steering leg). -->
+    <plugin filename="libgz-sim-joint-state-publisher-system.so"
+            name="gz::sim::systems::JointStatePublisher">
+    </plugin>
+  </gazebo>
+
+</robot>

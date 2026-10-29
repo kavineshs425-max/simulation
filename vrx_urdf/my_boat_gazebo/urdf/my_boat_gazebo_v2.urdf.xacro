@@ -1,0 +1,85 @@
+<?xml version="1.0"?>
+<!--
+  my_boat_gazebo_v2.urdf.xacro
+  ============================
+  Top-level, spawnable description of the boat with marine physics and the
+  **v2 decoupled thruster arrangement**:
+
+      T1  forward lateral thruster   (centreline, +d1 = +1.40 m fwd of the CG)
+      T2  aft     lateral thruster   (centreline, -d2 = -0.90 m aft of the CG)
+      P1  fixed axial stern propeller (-d3 = -1.40 m aft, lateral offset p1_y)
+
+  v1 (my_boat_gazebo.urdf.xacro: bow tunnel pair + steerable stern drive) is
+  untouched and still spawnable — pick a layout by picking a top-level file.
+
+  Process to plain URDF/SDF with, e.g.:
+    xacro my_boat_gazebo_v2.urdf.xacro namespace:=my_boat > /tmp/my_boat_v2.urdf
+    xacro my_boat_gazebo_v2.urdf.xacro namespace:=my_boat d1:=1.9 d2:=1.4 > ...
+  launch/spawn_my_boat_v2.launch.py does this for you and applies the
+  config/*.yaml overrides.
+-->
+<robot xmlns:xacro="http://ros.org/wiki/xacro" name="my_boat">
+
+  <!-- Namespace used for the link name and plugin link references. Keep the
+       spawn -name equal to this so USVWind's scoped link match works. -->
+  <xacro:arg name="namespace" default="my_boat"/>
+  <xacro:property name="namespace" value="$(arg namespace)" scope="global"/>
+
+  <!-- ====================================================================
+       v2 THRUSTER GEOMETRY  (metres, base_link/CG frame; +X fwd, +Y port)
+       ....................................................................
+       Defaults mirror thruster_allocator_v2/config/allocator_v2.yaml. Change
+       them HERE (or with `d1:=...` on the launch/xacro command line) and change
+       the allocator config to match — the two must describe the same boat.
+         d1   : forward lateral thruster, distance FORWARD of the CG
+         d2   : aft     lateral thruster, distance AFT of the CG
+         d3   : stern propeller,          distance AFT of the CG
+                (does NOT enter the allocation matrix B — an axial force on the
+                 centreline has no moment arm about Z — but it does set where
+                 the leg sits and hence the pitch moment)
+         p1_y : stern propeller LATERAL offset, + = to port. 0.0 = nominal;
+                non-zero deliberately models a mounting offset, which turns
+                surge into a parasitic yaw moment N = -p1_y*P1.
+       See urdf/thrusters/my_boat_thruster_layout_v2.xacro for the hull-fit
+       check on these stations (wetted band is x in [-0.95, +1.65]).
+       ==================================================================== -->
+  <xacro:arg name="d1"   default="1.40"/>
+  <xacro:arg name="d2"   default="0.90"/>
+  <xacro:arg name="d3"   default="1.40"/>
+  <xacro:arg name="p1_y" default="0.00"/>
+  <xacro:property name="d1"   value="$(arg d1)"   scope="global"/>
+  <xacro:property name="d2"   value="$(arg d2)"   scope="global"/>
+  <xacro:property name="d3"   value="$(arg d3)"   scope="global"/>
+  <xacro:property name="p1_y" value="$(arg p1_y)" scope="global"/>
+
+  <!-- Bring in the boat + marine plugins + v2 propulsion macro, instantiate. -->
+  <xacro:include filename="$(find my_boat_gazebo)/urdf/my_boat_gazebo_v2.xacro"/>
+  <xacro:my_boat_gazebo_v2/>
+
+  <!-- === TF / state publishing (identical to v1) === -->
+  <gazebo>
+    <plugin filename="libgz-sim-pose-publisher-system.so"
+            name="gz::sim::systems::PosePublisher">
+      <publish_link_pose>false</publish_link_pose>
+      <publish_sensor_pose>false</publish_sensor_pose>
+      <publish_collision_pose>false</publish_collision_pose>
+      <publish_visual_pose>false</publish_visual_pose>
+      <publish_nested_model_pose>false</publish_nested_model_pose>
+      <publish_model_pose>true</publish_model_pose>
+      <use_pose_vector_msg>true</use_pose_vector_msg>
+      <static_publisher>false</static_publisher>
+      <static_update_frequency>1</static_update_frequency>
+    </plugin>
+
+    <!-- Gazebo's built-in joint-state publisher. Publishes every joint's
+         position/velocity on the gz topic
+           /world/<world>/model/<model>/joint_state   (gz.msgs.Model)
+         which the spawn launch bridges to ROS /<ns>/joint_states so that
+         robot_state_publisher can broadcast the moving TF tree (the three
+         spinning propellers; v2 has no steering joint to report). -->
+    <plugin filename="libgz-sim-joint-state-publisher-system.so"
+            name="gz::sim::systems::JointStatePublisher">
+    </plugin>
+  </gazebo>
+
+</robot>

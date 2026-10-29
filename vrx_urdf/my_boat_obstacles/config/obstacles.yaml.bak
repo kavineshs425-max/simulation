@@ -1,0 +1,484 @@
+# =============================================================================
+# obstacles.yaml -- THE config file for my_boat_obstacles
+# =============================================================================
+# Loaded by default:   ros2 launch my_boat_obstacles moving_obstacles.launch.py
+# Another file:        ... moving_obstacles.launch.py config:=/path/to/file.yaml
+#
+# Edit this file while the sim is running, then apply it without restarting:
+#   ros2 service call /obstacle_spawner/reload std_srvs/srv/Trigger
+# (the workspace is --symlink-install, so the installed copy IS this file).
+# A file with a mistake in it is rejected as a whole and nothing changes;
+# the reason is in the service reply.
+#
+# Obstacles spawn at `start` and HOLD STILL until:
+#   ros2 service call /obstacle_spawner/run   std_srvs/srv/Trigger
+#   ros2 service call /obstacle_spawner/reset std_srvs/srv/Trigger   # back to start
+#
+# COORDINATES: Gazebo world, ENU.  x = east, y = north  [m]
+#              heading_deg: 0 = east, 90 = north, 180 = west, -90 = south
+# my_boat spawns at (-528, 186) facing east (heading 0).
+# =============================================================================
+
+scenario:
+  name: drawing_four_obstacles     # just a label for the log
+
+# -----------------------------------------------------------------------------
+# Spawner settings. Every key is optional; these are the defaults.
+# -----------------------------------------------------------------------------
+settings:
+  world: sydney_regatta      # running Gazebo world         (reload: needs restart)
+  boat_model: my_boat        # our boat's Gazebo model name (reload: needs restart)
+  name_prefix: obs           # Gazebo model = <prefix>_<name> (reload: needs restart)
+  world_frame: world         # frame_id on /sim/obstacles/* ground truth
+  run_lead_s: 0.5            # [s] motion starts this long after the run call
+  sample_step_s: 0.5         # [s] path sampling for the plugin (corner cut <= speed*step/2)
+  duration_s: 600.0          # [s] paths play this long after run, then hold still
+  model_paths: []            # extra folders of your own 3-D models (models/ is always searched)
+  # my_boat's collision box, used to REPORT hits on /sim/obstacles/collisions
+  # (Gazebo does the physics itself). From my_boat_base.urdf.xacro.
+  boat_box_length: 4.0
+  boat_box_width: 1.7
+  boat_box_offset_x: 0.23    # box centre ahead of the model origin
+  land_mask: ''              # warns if an obstacle starts on land or runs ashore:
+                             # '' = worlds/<world>_land.npz (shipped for sydney_regatta),
+                             # 'none' = off, or a path. Build one: tools/make_land_mask.py
+  collision_release_s: 1.0   # [s] a hit ends only after this long with no contact
+                             #   (the boat bounces along a hull while being shoved)
+  speed_scale: 1.0           # multiplies EVERY obstacle's speed (2.0 = all twice as fast,
+                             # same paths). Live too, no restart:
+                             #   ros2 param set /obstacle_spawner speed_scale 2.0
+  on_contact: stop           # what an obstacle does when it touches another obstacle
+                             # or my_boat: stop (halts there) | pass (keeps its path).
+                             # Obstacles are scripted, so without "stop" two of them
+                             # drive straight through each other.
+
+# -----------------------------------------------------------------------------
+# Obstacles. Per obstacle:
+#
+#   name          unique; also the service name for set_start
+#   model         what it looks like / what the lidar sees:
+#                   brazilian   5.1 m boat (mesh)     default class boat
+#                   bass_boat   8.2 m boat (mesh)     default class boat
+#                   freedom_365 10.2 m yacht (mesh)   default class ship
+#                   kayak       4.0 x 0.8 box         default class kayak
+#                   buoy        0.8 m cylinder        default class buoy
+#                   swimmer     0.6 x 0.5 box         default class swimmer
+#                   barge       8 x 3 box             default class barge
+#                   pillar      1.0 m cylinder        default class pillar
+#                   obstacle_buoy / obstacle_pillar / obstacle_barge
+#                               the first static field's shapes (yellow buoy
+#                               0.9 x 2.4 m, orange pillar 1.2 x 5 m, grey barge)
+#                 ...plus YOUR OWN models: every folder in models/ with a
+#                 model.yaml (see models/README.md). Shipped examples:
+#                   shipping_container  textured .obj     default class debris
+#                   channel_marker      coloured .stl     default class marker
+#   class         optional detector label (Gazebo Label system):
+#                   unknown boat ship kayak buoy swimmer barge pillar
+#                   marker debris structure
+#   vessel_class  optional COLREGs truth: unknown power_driven sailing fishing
+#                   restricted_manoeuvre not_under_command
+#   size          optional [length, width, height] m -- PRIMITIVES ONLY
+#                   (kayak buoy swimmer barge pillar); buoy/pillar need l == w.
+#                   A mesh is sized by `scale` in its model.yaml.
+#   colour        optional [r, g, b] 0..1 -- ANY model. On a mesh that has its
+#                   own materials (.glb, .obj+.mtl, .dae) it replaces them.
+#   texture       optional image (png/jpg), path relative to THIS file.
+#                   Primitives, and meshes with texture coordinates (.obj
+#                   .glb .gltf .dae). Not the built-in boats or any .stl: an STL
+#                   has no texture coordinates (you get an error saying so).
+#                   With colour too, the colour tints the image.
+#   collision     optional: box (default) -- a box round the hull, fast
+#                           mesh          -- the exact mesh shape (meshes only; slower)
+#                           none          -- sensors see it, the boat passes through
+#                 Every hit is logged and published on /sim/obstacles/collisions.
+#
+#   start         {x, y, heading_deg}  where it waits, and which way it points
+#   speed         HOW FAST it moves after run, m/s (1 m/s = 1.94 kn).
+#                   Or speed_kn: in knots. Needed by every moving obstacle.
+#   motion        HOW it moves after run (leave out = static):
+#                   {type: static}
+#                   {type: constant_velocity}                     straight along heading_deg
+#                   {type: constant_turn, turn_rate_deg_s: 3.0}   + = to port (CCW)
+#                   {type: waypoints, loop: true, points: [[x, y], ...]}
+#                 (speed may also be written inside motion: {type: ..., speed: 1.0})
+#   start_delay   optional [s] wait after run before moving (default 0)
+#   crab_deg      optional: the bow points this far off the direction of travel
+#                   (heading = course + crab); tests heading-vs-course handling
+#   on_contact    optional: stop | pass -- overrides settings.on_contact
+# -----------------------------------------------------------------------------
+
+obstacles:
+  - name: centre_crosser
+    model: brazilian
+    class: boat
+    vessel_class: power_driven
+    colour: [0.85, 0.1, 0.1]
+    start: {x: -429.4, y: 218.24}
+    speed: 3.2
+    motion:
+      type: waypoints
+      points:
+        - [-385.56, 222.64]
+        - [-362.91, 243.92]
+        - [-352.74, 299.66]
+
+  - name: left_kayak
+    model: kayak
+    class: kayak
+    vessel_class: unknown
+    colour: [0.95, 0.55, 0.1]
+    size: [4, 0.8, 0.6]
+    start: {x: -466.59, y: 254.97}
+    speed: 2.3
+    motion:
+      type: waypoints
+      points:
+        - [-398.19, 262.35]
+        - [-368.31, 259.39]
+        - [-318.3, 271.89]
+
+  - name: top_ship
+    model: freedom_365
+    class: ship
+    vessel_class: power_driven
+    colour: [0.1, 0.25, 0.8]
+    start: {x: -326.85, y: 315.84}
+    speed: 3.3
+    motion:
+      type: waypoints
+      points:
+        - [-330.51, 293.12]
+        - [-331.78, 259.47]
+        - [-416.55, 189.29]
+
+  - name: right_buoy
+    model: buoy
+    class: buoy
+    colour: [0.95, 0.3, 0.05]
+    size: [0.8, 0.8, 1.5]
+    start: {x: -515.14, y: 177.17}
+    motion: {type: static}
+
+  - name: essex
+    model: jarethcruz38819hs-essex
+    class: boat
+    vessel_class: power_driven
+    start: {x: -354.91, y: 186.89}
+    speed: 3.4
+    motion:
+      type: waypoints
+      points:
+        - [-378.91, 247.31]
+        - [-388.65, 319.57]
+
+  - name: yacht
+    model: frickies_yacht
+    class: ship
+    vessel_class: power_driven
+    start: {x: -444.69, y: 304.17}
+    speed: 4
+    motion:
+      type: waypoints
+      points:
+        - [-425.89, 261.39]
+        - [-369.64, 218.2]
+        - [-245.92, 216.98]
+
+  - name: gate1_red
+    model: marker_buoy_red
+    start: {x: -505, y: 193}
+    motion: {type: static}
+
+  - name: gate1_green
+    model: marker_buoy_green
+    start: {x: -505, y: 179}
+    motion: {type: static}
+
+  - name: gate2_red
+    model: marker_buoy_red
+    start: {x: -481, y: 194}
+    motion: {type: static}
+
+  - name: gate2_green
+    model: marker_buoy_green
+    start: {x: -481, y: 180}
+    motion: {type: static}
+
+  - name: ball_orange
+    model: round_buoy_orange
+    start: {x: -515, y: 215}
+    motion: {type: static}
+
+  - name: ball_black
+    model: round_buoy_black
+    start: {x: -470, y: 232}
+    motion: {type: static}
+
+  - name: mark_white
+    model: marker_buoy_white
+    start: {x: -545, y: 262}
+    motion: {type: static}
+
+  - name: mark_black
+    model: marker_buoy_black
+    start: {x: -426.51, y: 204.59}
+    motion: {type: static}
+
+  - name: drum_1
+    model: oil_drum
+    start: {x: -489.5, y: 180.69, heading_deg: 20}
+    motion: {type: static}
+
+  - name: drum_2
+    model: oil_drum
+    start: {x: -488.28, y: 191.69, heading_deg: 75}
+    motion: {type: static}
+
+  - name: log_1
+    model: floating_log
+    start: {x: -432.68, y: 236.79, heading_deg: 30}
+    motion: {type: static}
+
+  - name: pile_1
+    model: pile
+    start: {x: -406.35, y: 272.66}
+    motion: {type: static}
+
+  - name: pile_2
+    model: pile
+    start: {x: -375.77, y: 199.83}
+    motion: {type: static}
+
+  - name: post_1
+    model: mooring_post
+    start: {x: -564, y: 203}
+    motion: {type: static}
+
+  - name: post_2
+    model: mooring_post
+    start: {x: -564, y: 232}
+    motion: {type: static}
+
+  - name: buoy_1
+    model: obstacle_buoy
+    start: {x: -487.32, y: 200.92}
+    motion: {type: static}
+
+  - name: buoy_2
+    model: obstacle_buoy
+    start: {x: -510.42, y: 190.67}
+    motion: {type: static}
+
+  - name: pillar_1
+    model: obstacle_pillar
+    start: {x: -495.36, y: 194.45}
+    motion: {type: static}
+
+  - name: pillar_2
+    model: obstacle_pillar
+    start: {x: -495.56, y: 177.02}
+    motion: {type: static}
+
+  - name: marker_buoy_green_1
+    model: marker_buoy_green
+    start: {x: -481.07, y: 221.35, heading_deg: -37.2}
+    motion: {type: static}
+
+  - name: channel_marker_1
+    model: channel_marker
+    start: {x: -365.28, y: 235.53, heading_deg: 0}
+    motion: {type: static}
+
+  - name: mooring_post_1
+    model: mooring_post
+    start: {x: -392.66, y: 214.24, heading_deg: 0}
+    motion: {type: static}
+
+  - name: shipping_container_1
+    model: shipping_container
+    start: {x: -406.14, y: 210.38, heading_deg: 0}
+    motion: {type: static}
+
+  - name: obstacle_barge_2
+    model: obstacle_barge
+    start: {x: -15.66, y: 231.44, heading_deg: 0}
+    motion: {type: static}
+
+  - name: obstacle_barge_3
+    model: obstacle_barge
+    start: {x: -59.62, y: 210.15, heading_deg: 0}
+    motion: {type: static}
+
+  - name: freedom_365_1
+    model: freedom_365
+    start: {x: -92.33, y: 209.85, heading_deg: 0}
+    motion: {type: static}
+
+  - name: brazilian_1
+    model: brazilian
+    start: {x: -113.3, y: 221.26, heading_deg: 0}
+    motion: {type: static}
+
+  - name: marker_buoy_green_2
+    model: marker_buoy_green
+    start: {x: -149.27, y: 219.85, heading_deg: 0}
+    motion: {type: static}
+
+  - name: round_buoy_black_2
+    model: round_buoy_black
+    start: {x: -165.15, y: 207.85, heading_deg: 0}
+    motion: {type: static}
+
+  - name: marker_buoy_green_3
+    model: marker_buoy_green
+    start: {x: -192.48, y: 221.15, heading_deg: 0}
+    motion: {type: static}
+
+  - name: marker_buoy_red_1
+    model: marker_buoy_red
+    start: {x: -226.82, y: 210.44, heading_deg: 0}
+    motion: {type: static}
+
+  - name: obstacle_barge_4
+    model: obstacle_barge
+    start: {x: -179.41, y: 215.64, heading_deg: -90}
+    motion: {type: static}
+
+  - name: brazilian_2
+    model: brazilian
+    start: {x: -469.28, y: 313.7}
+    speed: 4.2
+    motion:
+      type: waypoints
+      points:
+        - [-533.2, 311.89]
+        - [-597.09, 357.03]
+        - [-624.36, 332.21]
+
+  - name: frickies_yacht_1
+    model: frickies_yacht
+    start: {x: -485.32, y: 362.8}
+    speed: 2.7
+    motion:
+      type: waypoints
+      points:
+        - [-517.51, 318.45]
+        - [-520.09, 279.59]
+        - [-504.63, 260.42]
+
+  - name: brazilian_3
+    model: brazilian
+    start: {x: -583.33, y: 295.86}
+    speed: 2.8
+    motion:
+      type: waypoints
+      points:
+        - [-555.56, 287.89]
+        - [-524.23, 281.54]
+        - [-474.93, 295.86]
+
+  - name: bass_boat_1
+    model: bass_boat
+    start: {x: -881.92, y: 600.72}
+    speed: 1.8
+    motion:
+      type: waypoints
+      points:
+        - [-841.01, 496.27]
+        - [-821.46, 449.54]
+        - [-799.18, 386.52]
+        - [-856.77, 332.73]
+        - [-1020.85, 214.29]
+        - [-1014.87, 139.31]
+
+  - name: channel_marker_2
+    model: channel_marker
+    start: {x: -919.22, y: 606.82, heading_deg: 0}
+    motion: {type: static}
+
+  - name: brazilian_4
+    model: brazilian
+    start: {x: -900.2, y: 574.87}
+    speed: 1.9
+    motion:
+      type: waypoints
+      points:
+        - [-843.73, 508.22]
+        - [-821.46, 450.09]
+        - [-812.76, 365.87]
+        - [-867.09, 330.56]
+        - [-1020.85, 207.23]
+        - [-1024.11, 145.29]
+
+  - name: freedom_365_2
+    model: freedom_365
+    start: {x: -791.62, y: 588.17}
+    speed: 2.4
+    motion:
+      type: waypoints
+      points:
+        - [-821.71, 524.67]
+        - [-813.04, 471.12]
+        - [-800.26, 388.39]
+        - [-859.79, 337.58]
+        - [-953.94, 249.56]
+        - [-1023.82, 200.14]
+        - [-989.85, 164.89]
+
+  - name: frickies_yacht_2
+    model: frickies_yacht
+    start: {x: -824.48, y: 568.42}
+    speed: 4
+    motion:
+      type: waypoints
+      points:
+        - [-819.6, 461.75]
+        - [-810.42, 386.68]
+        - [-952.32, 263.15]
+        - [-1033.09, 208.67]
+        - [-1030.24, 154.51]
+
+  - name: jarethcruz38819hs_essex_1
+    model: jarethcruz38819hs-essex
+    start: {x: -853.85, y: 626.02}
+    speed: 1.6
+    motion:
+      type: waypoints
+      points:
+        - [-835.69, 604.09]
+        - [-848.24, 555.16]
+        - [-831.2, 485.15]
+        - [-814.9, 386.95]
+        - [-905.52, 299.74]
+        - [-1039.85, 186.51]
+        - [-1044.91, 134.98]
+
+  - name: kayak_1
+    model: kayak
+    start: {x: -899.04, y: 547.49}
+    speed: 2
+    motion:
+      type: waypoints
+      points:
+        - [-845.52, 491.18]
+        - [-807.23, 395.63]
+        - [-926.66, 280.37]
+        - [-1042.84, 228.26]
+
+  # --- your own models: uncomment to try the two shipped examples -----------
+  # - name: drifting_container   # textured .obj, mostly awash
+  #   model: shipping_container
+  #   start: {x: -470.0, y: 180.0, heading_deg: 20.0}
+  #   motion: {type: constant_velocity, speed: 0.2}
+  #
+  # - name: marker_1             # coloured .stl channel marker
+  #   model: channel_marker
+  #   colour: [0.85, 0.05, 0.05] # overrides the green from its model.yaml
+  #   start: {x: -500.0, y: 175.0}
+  #
+  # - name: ghost_kayak          # visible to the sensors, but NO collision
+  #   model: kayak
+  #   collision: none
+  #   texture: ../models/shipping_container/container.png
+  #   start: {x: -510.0, y: 200.0, heading_deg: -90.0}
+  #   motion: {type: constant_velocity, speed: 0.8}

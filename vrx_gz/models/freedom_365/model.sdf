@@ -1,0 +1,76 @@
+<?xml version="1.0"?>
+<!--
+  freedom_365 - passive FLOATING detection target (no propulsion / no control).
+  Purpose: a boat-shaped object my_boat's lidar + camera can record for training
+  an AI detection model.
+
+  Geometry: the downloaded STL is in METRES. Long axis is +Y (~10.2 m), beam +X
+  (~3.8 m), height +Z (~4.0 m), keel at z = -0.19. Placed in the world with a
+  pose z ~ -0.21 so it spawns at its floating equilibrium.
+
+  VISUAL  = the full STL mesh (370k tris) - this is what the gpu_lidar and the
+            camera actually see (sensors raycast the rendered/visual geometry).
+  PHYSICS = a cheap BOX collision (the full mesh would be far too costly as a
+            collision shape) + vrx::PolyhedraBuoyancyDrag (the same plugin VRX
+            uses to float its buoys) tuned to float at ~0.4 m draft.
+            12 000 kg / (3.3 x 9.0 m buoyancy box) -> submerged depth ~0.40 m.
+-->
+<sdf version="1.9">
+  <model name="freedom_365">
+    <link name="base_link">
+      <inertial>
+        <!-- Box approximation (3.79 x 10.22 x 2.0 m effective), 12 t. -->
+        <mass>12000.0</mass>
+        <inertia>
+          <ixx>108450</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>18360</iyy><iyz>0</iyz>
+          <izz>118810</izz>
+        </inertia>
+      </inertial>
+
+      <!-- VISUAL: the downloaded mesh = what the lidar + camera record. -->
+      <visual name="hull_visual">
+        <geometry>
+          <mesh>
+            <uri>model://freedom_365/meshes/freedom_365.stl</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+        <material>
+          <ambient>0.85 0.85 0.88 1</ambient>
+          <diffuse>0.80 0.80 0.85 1</diffuse>
+          <specular>0.20 0.20 0.20 1</specular>
+        </material>
+      </visual>
+
+      <!-- COLLISION: simple box spanning the hull (keeps physics cheap). -->
+      <collision name="hull_collision">
+        <pose>0 0 0.21 0 0 0</pose>
+        <geometry>
+          <box><size>3.6 9.5 1.0</size></box>
+        </geometry>
+      </collision>
+    </link>
+
+    <!-- Buoyancy + hydrodynamic drag (identical plugin to the world's buoys).
+         The <buoyancy> box (not the collision) is what generates lift; sized so
+         12 t floats at ~0.4 m draft. Raise/lower <mass> to change the draft;
+         raise the drag values to keep it more planted against wave drift. -->
+    <plugin name="vrx::PolyhedraBuoyancyDrag" filename="libPolyhedraBuoyancyDrag.so">
+      <fluid_density>1000</fluid_density>
+      <fluid_level>0.0</fluid_level>
+      <linear_drag>2000.0</linear_drag>
+      <angular_drag>5000.0</angular_drag>
+      <buoyancy name="hull">
+        <link_name>base_link</link_name>
+        <pose>0 0 0.21 0 0 0</pose>
+        <geometry>
+          <box><size>3.3 9.0 0.8</size></box>
+        </geometry>
+      </buoyancy>
+      <wavefield>
+        <topic>/vrx/wavefield/parameters</topic>
+      </wavefield>
+    </plugin>
+  </model>
+</sdf>

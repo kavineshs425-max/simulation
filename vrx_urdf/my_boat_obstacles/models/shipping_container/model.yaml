@@ -1,0 +1,10 @@
+# A 20 ft shipping container adrift, mostly awash -- low freeboard is hard to see.
+# The .obj brings its own material (container.mtl -> container.png), so no
+# colour/texture here: a mesh keeps its own look unless you override it.
+mesh: container.obj
+scale: 1.0
+forward_axis: +x         # the long side is mesh +x
+up_axis: +z
+draft: 1.9               # floats with only ~0.7 m showing
+class: debris
+collision: box

@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<!--
+  my_boat_gazebo_v2.xacro
+  =======================
+  v2 counterpart of my_boat_gazebo.xacro. Defines the `my_boat_gazebo_v2` macro:
+  the SAME hull, marine physics and sensor stack as v1, with the **v2 decoupled
+  thruster arrangement** (T1 forward lateral + T2 aft lateral + P1 fixed stern
+  propeller) in place of v1's two bow tunnels + steerable stern drive.
+
+  Only the propulsion layer differs — my_boat_base.urdf.xacro (hull, mass,
+  inertia), my_boat_gazebo_dynamics_plugin.xacro (buoyancy + hydrodynamics) and
+  my_boat_sensors.xacro (IMU/GPS/LiDAR/camera) are reused unchanged, so results
+  are directly comparable between the two layouts.
+-->
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+  <!-- Marine dynamics macro (Surface + SimpleHydrodynamics). -->
+  <xacro:include filename="$(find my_boat_gazebo)/urdf/dynamics/my_boat_gazebo_dynamics_plugin.xacro"/>
+  <!-- Propulsion arrangement v2: T1/T2 centreline laterals + P1 stern prop. -->
+  <xacro:include filename="$(find my_boat_gazebo)/urdf/thrusters/my_boat_thruster_layout_v2.xacro"/>
+  <!-- IMU + GPS + LiDAR + camera sensor stack (identical to v1). -->
+  <xacro:include filename="$(find my_boat_gazebo)/urdf/sensors/my_boat_sensors.xacro"/>
+
+  <xacro:macro name="my_boat_gazebo_v2">
+    <!-- The pure rigid body (CG-centred base_link, mesh, inertia). -->
+    <xacro:include filename="$(find my_boat_description)/urdf/my_boat_base.urdf.xacro"/>
+    <!-- Attach buoyancy + hydrodynamics. -->
+    <xacro:usv_dynamics_gazebo name="my_boat_dynamics_plugin"/>
+    <!-- IMU + GPS + LiDAR + camera (via fixed joints). -->
+    <xacro:my_boat_sensors/>
+  </xacro:macro>
+</robot>

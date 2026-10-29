@@ -1,0 +1,54 @@
+# =============================================================================
+# Authoritative mass / CG / inertia for my_boat
+# =============================================================================
+# Source: mass_properties.pdf (SolidWorks, "user-overridden" mass and CG).
+#
+# PER PROJECT NOTES these values are GROUND TRUTH and are NOT recomputed from
+# geometry. The CAD model is a solid geometric body, so its reported volume
+# (2.98 m^3) and density (141.04 kg/m^3) are NOT physically meaningful and are
+# deliberately ignored for both inertia and buoyancy.
+#
+# This file documents the numbers baked into urdf/my_boat_base.urdf.xacro. It
+# is reference/config only; the xacro is the single source the model uses.
+# =============================================================================
+
+# --- Mass --------------------------------------------------------------------
+mass_kg: 420.0                 # user-overridden total vessel mass
+
+# --- Centre of gravity, CAD (SolidWorks, Y-up) frame, metres -----------------
+#   CAD X = lateral (beam) , CAD Y = vertical (up) , CAD Z = longitudinal
+cog_cad:
+  x: 0.00
+  y: 0.49
+  z: 0.47
+
+# base_link is DEFINED at this CG, so CG relative to base_link is exactly zero.
+cog_base_link: {x: 0.0, y: 0.0, z: 0.0}
+
+# --- Inertia tensor ----------------------------------------------------------
+# Selected tensor: "at the centre of mass" (NOT the at-origin tensor), because
+# base_link coincides with the CoM -> no parallel-axis term is needed and the
+# tensor is exact at base_link. (kg*m^2)
+inertia_at_com_cad:            # as reported, CAD frame
+  Lxx: 606.43
+  Lyy: 652.79
+  Lzz: 100.22
+  Lxy: 0.00
+  Lxz: 0.00
+  Lyz: -5.48
+
+# Same tensor rotated into the ROS body frame ( I_ros = R * I_cad * R^T,
+# R = CAD->ROS axis permutation rpy 1.5708 0 1.5708 ). THESE go in the model.
+inertia_at_com_ros:
+  ixx: 100.22                  # roll  (about fwd X)  -> smallest, as expected
+  iyy: 606.43                  # pitch (about port Y)
+  izz: 652.79                  # yaw   (about up Z)   -> largest, as expected
+  ixy: 0.00
+  ixz: -5.48
+  iyz: 0.00
+
+# --- Mesh import transform (CAD mm, Y-up  ->  ROS m, CG-centred) --------------
+mesh:
+  scale: 0.001                 # millimetres -> metres
+  rpy: [1.5708, 0.0, 1.5708]   # CAD -> ROS axis permutation
+  xyz: [-0.47, 0.0, -0.49]     # = -R * cog_cad

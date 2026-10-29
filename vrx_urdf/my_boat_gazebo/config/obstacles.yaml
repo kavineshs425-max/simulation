@@ -1,0 +1,16 @@
+# obstacles.yaml -- the static obstacle field, in GAZEBO WORLD coordinates.
+#
+# The boat spawns near (-528, 186). Ranges below are from there.
+# Edit freely, then re-run:  ros2 launch my_boat_gazebo spawn_obstacles.launch.py
+#
+# type:  pillar | barge | buoy   (models/obstacles/obstacle_<type>.sdf)
+# yaw:   degrees, optional (default 0)
+#
+# Sized against the costmap thresholds in nav2_smac2d.yaml:
+#   min_obstacle_height 0.3  <  every obstacle's freeboard  <  max_obstacle_height 8.0
+obstacles:
+  - {name: buoy_1,   type: buoy,   x: -512, y: 205}          #  ~26 m off the bow
+  - {name: buoy_2,   type: buoy,   x: -508, y: 168}          #  ~26 m
+  - {name: pillar_1, type: pillar, x: -500, y: 200}          #  ~32 m
+  - {name: pillar_2, type: pillar, x: -495, y: 178}          #  ~34 m
+  - {name: barge_1,  type: barge,  x: -470, y: 192, yaw: 30} #  ~59 m

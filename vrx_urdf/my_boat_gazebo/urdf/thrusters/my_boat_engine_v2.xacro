@@ -1,0 +1,217 @@
+<?xml version="1.0"?>
+<!--
+  my_boat_engine_v2.xacro
+  =======================
+  Kinematic description (links + joints) of the **v2 (decoupled) propulsion
+  arrangement**. Sibling of my_boat_engine.xacro, which describes the v1
+  arrangement (two bow tunnels + a steerable stern drive) and is left untouched.
+  The PHYSICS (forces) is added by my_boat_thruster_config.xacro — shared with
+  v1, nothing in it is layout-specific.
+
+  Two macros:
+    * lateral_thruster -> APISQUEEN U92 Pro (T1, T2). A bare reversible
+                          propeller attached DIRECTLY to base_link by a
+                          continuous joint (NO housing, NO shaft), aimed
+                          athwartships. Thrust is lateral (sway + yaw).
+                          Both units sit ON THE CENTRELINE, one FORWARD of the
+                          CoG and one AFT of it — that longitudinal separation
+                          is the whole point of v2 (see below).
+    * stern_propeller  -> Torqeedo Cruise 3.0 R (P1). A FIXED (non-steerable)
+                          outboard leg: a vertical strut carrying the propeller,
+                          thrust purely axial (+/-X). No steering joint, no
+                          steering actuator, no alpha.
+
+  ===========================================================================
+  WHY v2 EXISTS  (see dynamic_positioning/claude/thruster_allocator_v2)
+  ===========================================================================
+  In v1, T1 and T2 shared the same longitudinal station (x = +1.03), so their
+  columns in the allocation matrix B were linearly dependent: sway and yaw were
+  geometrically locked together and pure yaw was impossible without deflecting
+  the stern drive. Moving one lateral AFT of the CoG makes the two columns
+  independent, B becomes full rank (det = -(d1+d2)), and the three DOF separate:
+  surge from P1 alone, sway + yaw from the invertible 2x2 lateral block. The
+  steering leg is then unnecessary and is deleted.
+
+  ===========================================================================
+  FRAME & PLACEMENT
+  ===========================================================================
+  Body-fixed, origin at the Centre of Gravity (C). +X bow, -X stern, +Y port,
+  -Y starboard, +Z up. base_link IS C. Stations are driven by the d1/d2/d3
+  globals set in my_boat_gazebo_v2.urdf.xacro (defaults mirror
+  thruster_allocator_v2/config/allocator_v2.yaml):
+
+    Thruster  | X     | Y     | Z     | Yaw(rad) | Facing | +cmd thrust
+    ..........|.......|.......|.......|..........|........|...............
+    T1 (fwd)  | +d1   | 0.00  | -0.23 | +1.5708  |  +Y    | +Y (port)
+    T2 (aft)  | -d2   | 0.00  | -0.23 | +1.5708  |  +Y    | +Y (port)
+    P1 (stern)| -d3   | p1_y  | -0.25 | +3.1416  |  -X    | +X (forward)
+    P1 strut length 0.40 m -> propeller at z = -0.65 (below the keel, z=-0.49).
+
+  NOTE the sign convention change from v1: here BOTH laterals thrust to PORT
+  for a positive command (v1 had T1 -> starboard, T2 -> port). This matches the
+  allocator's B directly:  Y = T1 + T2,  N = d1*T1 - d2*T2 - p1_y*P1.
+
+  ===========================================================================
+  THRUST DIRECTION RULE (gz-sim Thruster system)
+  ===========================================================================
+  The Thruster plugin applies its force along the PROPELLER joint <axis>,
+  expressed in the propeller-link frame and rotated into the world. So a unit's
+  thrust direction = R(chain) * axis. We place each unit with the yaw above and
+  pick the propeller <axis> so that a POSITIVE thrust command gives the stated
+  "+cmd thrust":
+    T1: yaw +90 deg, axis +X  -> +X(local) = +Y(world)  -> port     (OK)
+    T2: yaw +90 deg, axis +X  -> +X(local) = +Y(world)  -> port     (OK)
+    P1: yaw 180 deg, axis -X  -> -X(local) = +X(world)  -> forward  (OK)
+  Nothing steers, so these directions are constant in the body frame — which is
+  exactly why B is constant and the allocator needs only one QP.
+-->
+<robot xmlns:xacro="http://ros.org/wiki/xacro" name="my_boat_engine_v2">
+
+  <!-- ====================================================================
+       LATERAL THRUSTER (T1 / T2)  -  APISQUEEN U92 Pro.
+       ....................................................................
+       A bare reversible propeller, NO housing and NO shaft: the propeller
+       link is the child of a continuous joint whose parent is base_link. The
+       joint origin carries the unit's station and mount yaw; its axis is the
+       (aimed) thrust axis, which the Thruster plugin both spins and pushes
+       along. On the real hull these are TUNNEL thrusters running athwartships
+       through the hull, so the propeller sits on the centreline (y = 0) and is
+       hidden inside the hull mesh — expected, not a placement error.
+         prefix : T1 | T2
+         x y z  : propeller station in base_link (C) frame [m]
+         yaw    : mount yaw [rad]; +pi/2 for both units -> +cmd thrusts +Y
+       ==================================================================== -->
+  <xacro:macro name="lateral_thruster" params="prefix x y z yaw">
+
+    <!-- Propeller: visual = reused WAM-V propeller.dae; spins about local X and
+         the plugin applies thrust along that same axis. -->
+    <link name="${namespace}/${prefix}_propeller_link">
+      <visual>
+        <!-- propeller.dae faces / spins about its local X (no extra rotation) -->
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="model://propeller/mesh/propeller.dae" scale="0.42 0.42 0.42"/>
+        </geometry>
+      </visual>
+      <collision name="${prefix}_propeller_collision">
+        <!-- thin disc whose normal is local X (cylinder axis laid along X) -->
+        <origin xyz="0 0 0" rpy="0 1.5708 0"/>
+        <geometry>
+          <cylinder radius="0.06" length="0.04"/>
+        </geometry>
+      </collision>
+      <inertial>
+        <!-- whole U92 Pro pod, lumped into the propeller: m=2.5 kg,
+             solid cylinder r=0.06, L=0.10 about its own (X) axis -->
+        <mass value="2.5"/>
+        <inertia ixx="0.0045" iyy="0.00433" izz="0.00433"
+                 ixy="0.0" ixz="0.0" iyz="0.0"/>
+      </inertial>
+    </link>
+
+    <!-- base_link -> propeller (continuous). Origin = station + mount yaw; axis
+         is local X (= the aimed lateral thrust direction). -->
+    <joint name="${namespace}/${prefix}_propeller_joint" type="continuous">
+      <origin xyz="${x} ${y} ${z}" rpy="0 0 ${yaw}"/>
+      <axis xyz="1 0 0"/>
+      <parent link="${namespace}/base_link"/>
+      <child  link="${namespace}/${prefix}_propeller_link"/>
+      <limit effort="100" velocity="200"/>
+      <dynamics friction="0.0" damping="0.01"/>
+    </joint>
+
+  </xacro:macro>
+
+  <!-- ====================================================================
+       STERN PROPELLER (P1)  -  Torqeedo Cruise 3.0 R, FIXED axial mount.
+       ....................................................................
+       Same hardware as v1's stern drive with the steering removed. Chain:
+         base_link
+           =(fixed, at the station, yaw=pi)==> strut_link
+           =(continuous, axis -X)===========> propeller_link
+       The strut is a vertical cylinder from the transom mount down to the
+       propeller depth, so the surge force is applied BELOW the keel like a real
+       outboard leg (which is also why it produces a small bow-up pitch moment).
+       There is no steering joint: the thrust vector is fixed along +X, so P1
+       contributes surge only (and yaw only if p1_y != 0).
+         prefix    : P1
+         x y z     : strut TOP (hull mount point) in base_link (C) frame [m]
+         yaw       : mount yaw [rad]; +pi faces the prop aft (-X) -> +X thrust
+         prop_drop : strut length below the mount [m] -> propeller depth
+       ==================================================================== -->
+  <xacro:macro name="stern_propeller" params="prefix x y z yaw:='3.1416' prop_drop:='0.40'">
+
+    <!-- Fixed leg: a single vertical shaft CYLINDER (dia 0.05 m) from the hull
+         mount down to the propeller depth. Rigid — nothing rotates it. -->
+    <link name="${namespace}/${prefix}_strut_link">
+      <visual name="${prefix}_strut_visual">
+        <origin xyz="0 0 ${-prop_drop/2}" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.025" length="${prop_drop}"/>
+        </geometry>
+        <material name="strut_grey"><color rgba="0.3 0.3 0.32 1.0"/></material>
+      </visual>
+      <collision name="${prefix}_strut_collision">
+        <origin xyz="0 0 ${-prop_drop/2}" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.03" length="${prop_drop}"/>
+        </geometry>
+      </collision>
+      <inertial>
+        <!-- leg ~12 kg (bracket + leg + motor), centred ~halfway down -->
+        <origin xyz="0 0 ${-prop_drop/2}" rpy="0 0 0"/>
+        <mass value="12.0"/>
+        <inertia ixx="0.6" iyy="0.6" izz="0.05" ixy="0" ixz="0" iyz="0"/>
+      </inertial>
+    </link>
+
+    <!-- Propeller (visual spin only; thrust is the plugin force). propeller.dae
+         naturally faces its local +X, so IDENTITY rpy keeps the blade disc
+         normal on local X = the spin/thrust axis. With the leg's 180-deg mount
+         yaw that points the blades aft (world -X). -->
+    <link name="${namespace}/${prefix}_propeller_link">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="model://propeller/mesh/propeller.dae" scale="0.42 0.42 0.42"/>
+        </geometry>
+      </visual>
+      <collision name="${prefix}_propeller_collision">
+        <!-- thin disc, normal along local X (cylinder axis laid along X) -->
+        <origin xyz="0 0 0" rpy="0 1.5708 0"/>
+        <geometry>
+          <!-- Torqeedo prop, dia 0.10 m -->
+          <cylinder radius="0.05" length="0.05"/>
+        </geometry>
+      </collision>
+      <inertial>
+        <!-- m=1.0 kg, solid cylinder r=0.05, L=0.05 about its own (X) axis -->
+        <mass value="1.0"/>
+        <inertia ixx="0.00125" iyy="0.000833" izz="0.000833"
+                 ixy="0.0" ixz="0.0" iyz="0.0"/>
+      </inertial>
+    </link>
+
+    <!-- base_link -> leg (RIGID). This is where the v1 steering joint used to
+         be; in v2 it is welded. Aimed by 'yaw' so the prop faces aft. -->
+    <joint name="${namespace}/${prefix}_mount_joint" type="fixed">
+      <origin xyz="${x} ${y} ${z}" rpy="0 0 ${yaw}"/>
+      <parent link="${namespace}/base_link"/>
+      <child  link="${namespace}/${prefix}_strut_link"/>
+    </joint>
+
+    <!-- PROPELLER ROTATION JOINT: continuous, visual-only spin. The Thruster
+         plugin spins it AND applies the surge force along this axis. axis=-X so
+         that (after the +180 deg mount yaw) a POSITIVE command thrusts +X. -->
+    <joint name="${namespace}/${prefix}_propeller_joint" type="continuous">
+      <origin xyz="0 0 ${-prop_drop}" rpy="0 0 0"/>
+      <axis xyz="-1 0 0"/>
+      <parent link="${namespace}/${prefix}_strut_link"/>
+      <child  link="${namespace}/${prefix}_propeller_link"/>
+      <limit effort="500" velocity="200"/>
+      <dynamics friction="0.0" damping="0.01"/>
+    </joint>
+
+  </xacro:macro>
+
+</robot>

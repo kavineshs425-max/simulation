@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>my_boat_teleop</name>
+  <version>0.1.0</version>
+  <description>
+    Keyboard teleoperation for the my_boat USV propulsion system. Reads
+    keystrokes from the terminal and publishes thrust (N) and steering (rad)
+    commands to the my_boat thruster topics, for manual driving / quick testing
+    before a ROS 2 force allocator is in the loop.
+  </description>
+  <maintainer email="kavineshs@wroxai.com">Kavinesh S</maintainer>
+  <license>Apache 2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>std_msgs</depend>
+
+  <exec_depend>ros2launch</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

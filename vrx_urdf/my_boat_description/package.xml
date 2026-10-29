@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>my_boat_description</name>
+  <version>0.1.0</version>
+  <description>
+    URDF description of the custom boat hull for VRX / Gazebo Garden.
+    Provides the pure rigid body only: CG-centred base_link, the imported
+    DAE hull visual, a simplified collision box, and the real mass/inertia
+    from the CAD mass-properties report. Mirrors the role of wamv_description;
+    marine physics is layered on by my_boat_gazebo.
+  </description>
+  <maintainer email="kavineshs@wroxai.com">Kavinesh S</maintainer>
+  <license>Apache 2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>xacro</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

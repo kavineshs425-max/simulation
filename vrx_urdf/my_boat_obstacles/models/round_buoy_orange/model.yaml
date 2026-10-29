@@ -1,0 +1,11 @@
+# VRX round (ball) buoy, orange
+# The mesh comes from Gazebo's Fuel cache (the same model the VRX worlds use),
+# so nothing is copied here. Collada in feet and Y-up: measured automatically,
+# stood upright by up_axis.
+mesh: fuel:openrobotics/mb_round_buoy_orange/meshes/mb_round_buoy.dae
+forward_axis: +x
+up_axis: +y
+draft: 0.2
+class: buoy
+collision: box
+colour: [0.99, 0.19, 0.0]

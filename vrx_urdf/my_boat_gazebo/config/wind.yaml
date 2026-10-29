@@ -1,0 +1,36 @@
+# =============================================================================
+# Wind configuration for my_boat  (vrx::USVWind / libUSVWind.so)
+# =============================================================================
+# VRX applies wind through the USVWind plugin, which lives in the WORLD file
+# (not the model) and pushes only the links listed as <wind_obj>. Two things
+# are required for the boat to feel wind (both already wired for you):
+#   1. The model opts in via <enable_wind>true</enable_wind>
+#      -> set in my_boat_description/urdf/my_boat_base.urdf.xacro.
+#   2. A <wind_obj> entry naming the boat's link is added to the world's
+#      USVWind plugin. Ready-to-paste snippet:
+#         worlds/examples/wind_obj_snippet.sdf
+#      Already embedded in the bundled test world:
+#         worlds/examples/my_boat_test.sdf
+#
+# coeff_vector = windage coefficients (x, y, z) in the body frame. A monohull
+# presents far more lateral area (and some freeboard/superstructure) than
+# frontal area, so the lateral (y) term dominates. Basis follows the same
+# FAU-report convention VRX uses for WAM-V (.5 .5 .33), nudged for more side
+# area. Expected behaviour: the boat drifts and weathervanes downwind.
+# =============================================================================
+wind:
+  name: my_boat
+  link_name: my_boat/base_link
+  coeff_vector_x: 0.5
+  coeff_vector_y: 0.7
+  coeff_vector_z: 0.4
+
+  # World-level wind field. In the REAL VRX world these come from the world's
+  # existing USVWind config; these values drive the bundled standalone test
+  # world and match VRX defaults (direction in degrees, velocity in m/s).
+  wind_direction_deg: 240.0
+  wind_mean_velocity: 5.0
+  var_wind_gain_constants: 2.0
+  var_wind_time_constants: 1.0
+  random_seed: 10
+  update_rate: 10.0

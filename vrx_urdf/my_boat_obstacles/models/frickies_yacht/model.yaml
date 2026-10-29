@@ -1,0 +1,13 @@
+# Frickie's Yacht -- a superyacht with a helipad (glTF + 46 textures, 70k triangles).
+# "Frickie's Yacht" by KurumA, https://sketchfab.com/3d-models/frickies-yacht-a5b72f2a23cd4e1f9eaf49059606c7a3
+# licensed CC-BY-NC-4.0 (see license.txt): credit the author, NO commercial use.
+# Sketchfab normalised it to ~2 m, so its real size is set with `length`.
+mesh: scene.gltf
+length: 30.0             # [m] real hull length
+forward_axis: -z         # the bow is at mesh -z
+up_axis: +y              # glTF is Y-up
+draft: 1.5               # [m] under the water
+class: ship
+collision: box
+matte: true              # the HULL material (CJ_Boat_1) is metallic 0.5 = 67 % of the
+                         # surface would render black; this uses scene.matte.gltf instead

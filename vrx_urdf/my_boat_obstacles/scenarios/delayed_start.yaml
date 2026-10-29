@@ -1,0 +1,21 @@
+# World coordinates (Gazebo ENU): x east, y north, heading_deg 0 = east, 90 = north.
+# Obstacles spawn at "start" and HOLD STILL until you call
+#   ros2 service call /obstacle_spawner/run std_srvs/srv/Trigger
+#
+# start_delay: 'popup' sits still for 20 s after run, then cuts across close
+# (passes 2 m to port at t = 35 s if we run east at 1.4 m/s from the spawn).
+# A fishing boat circles to starboard from the moment of run.
+# design: {own_speed: 1.4, own_heading_deg: 0, obstacle: popup, tcpa: 35.0, dcpa: 2.0}
+scenario: {name: delayed_start}
+obstacles:
+  - name: popup
+    model: brazilian
+    vessel_class: power_driven
+    start_delay: 20.0
+    start: {x: -470.92, y: 203.36, heading_deg: -120.0}
+    motion: {type: constant_velocity, speed: 1.2}
+  - name: circling_fisher
+    model: bass_boat
+    vessel_class: fishing
+    start: {x: -478.0, y: 161.0, heading_deg: 90.0}
+    motion: {type: constant_turn, speed: 0.8, turn_rate_deg_s: 3.0}

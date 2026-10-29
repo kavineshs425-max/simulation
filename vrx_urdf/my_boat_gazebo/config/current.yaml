@@ -1,0 +1,40 @@
+# =============================================================================
+# Ocean-current configuration for my_boat
+# =============================================================================
+# IMPORTANT — VRX provides NO dedicated ocean-current plugin.
+# The VRX marine stack ships only: Surface (buoyancy/waves), SimpleHydrodynamics
+# (drag/added mass) and USVWind (wind). SimpleHydrodynamics computes drag
+# relative to STILL water (it reads the link's world velocity, not a water-flow
+# velocity), so a moving body of water is not modelled natively.
+#
+# Per the project rule "do NOT create custom marine physics unless VRX provides
+# no equivalent", current is therefore handled as an EMULATED steady disturbance
+# rather than a new physics system. Two supported options:
+#
+# OPTION A (recommended, zero new code) — apply a constant body force equal to
+# the drag a uniform current would exert, via Gazebo's ApplyLinkWrench service.
+# The required force is just the surge/sway drag at the current speed Uc:
+#       F_current ~= xU * Uc        (along-current, surge)   [linear term]
+#                 (+ xUU * Uc^2     if you want the quadratic part)
+# Example: Uc = 0.5 m/s along +X, xU = 150  ->  F ~= 75 N. Apply with:
+#   gz topic -t /world/<world>/wrench -m gz.msgs.EntityWrench \
+#     -p 'entity:{name:"my_boat", type:MODEL}, wrench:{force:{x:75}}'
+# The hull then drifts and the SimpleHydrodynamics drag resists it, giving the
+# expected "drift + hydrodynamic resistance" behaviour (Test 6).
+#
+# OPTION B (future, if true current is needed) — extend SimpleHydrodynamics to
+# subtract a configurable current velocity from the relative-flow term (one-line
+# change in the drag computation). Left as a documented hook; NOT implemented in
+# this phase to honour the "reuse VRX, no custom physics" constraint.
+#
+# The values below parameterise OPTION A and are consumed by the helper command
+# in docs/VALIDATION.md (not auto-applied by the spawn launch, since VRX has no
+# plugin to feed them to).
+# =============================================================================
+current:
+  enabled: false            # set true and use the helper in VALIDATION.md
+  speed: 0.5                # m/s, current magnitude (Uc)
+  direction_deg: 90.0       # deg, direction the water flows TOWARD (world frame)
+  # Drag coefficients reused from hydrodynamics.yaml to size the emulated force.
+  drag_surge_linear: 150.0  # = xU
+  drag_sway_linear: 400.0   # = yV

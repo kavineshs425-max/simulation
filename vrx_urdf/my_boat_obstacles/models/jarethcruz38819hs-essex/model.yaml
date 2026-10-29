@@ -1,0 +1,14 @@
+# Essex -- a workboat with a raised wheelhouse and mast.
+# source/duncanboat.zip holds the original STL: 1,488,427 triangles, 74 MB,
+# arbitrary units (a 3-D-print model). essex.stl is that mesh decimated to
+# 60,000 triangles (open3d quadric decimation, bounding box unchanged to 2 mm):
+# every obstacle is re-rendered for the lidar and camera each frame, and 1.5 M
+# triangles would slow the whole sim.
+mesh: essex.stl
+length: 12.0             # [m] real hull length -- the mesh units are unknown, so choose it here
+forward_axis: -y         # the pointed bow is at mesh -y
+up_axis: +z
+draft: 1.0               # [m] under the water
+class: boat
+collision: box
+colour: [0.20, 0.28, 0.45]   # an STL has no colours of its own

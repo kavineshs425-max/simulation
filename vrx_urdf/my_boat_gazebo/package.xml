@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>my_boat_gazebo</name>
+  <version>0.1.0</version>
+  <description>
+    Marine-simulation integration for my_boat. Layers the VRX buoyancy
+    (Surface), hydrodynamics (SimpleHydrodynamics) and wind (USVWind) plugins
+    onto the pure body from my_boat_description, mirroring the VRX
+    wamv_description + wamv_gazebo separation of concerns. Provides spawn launch
+    files, coefficient configs, a standalone test world and the propulsion
+    arrangement (T1/T2 bow tunnel thrusters + T3 steerable stern drive) with
+    its gz Thruster / JointPositionController plugins and ROS 2 command bridge.
+  </description>
+  <maintainer email="kavineshs@wroxai.com">Kavinesh S</maintainer>
+  <license>Apache 2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- The pure body this package extends. -->
+  <depend>my_boat_description</depend>
+
+  <!-- Description processing and spawning. -->
+  <exec_depend>xacro</exec_depend>
+  <exec_depend>ros_gz_sim</exec_depend>
+  <!-- Bridges the thruster/steering command topics to ROS 2. -->
+  <exec_depend>ros_gz_bridge</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+
+  <!-- VRX plugins: Surface, SimpleHydrodynamics, USVWind, PublisherPlugin. -->
+  <exec_depend>vrx_gz</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

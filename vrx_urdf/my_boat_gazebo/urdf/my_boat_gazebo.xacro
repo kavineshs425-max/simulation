@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<!--
+  my_boat_gazebo.xacro
+  ====================
+  Analogue of wamv_gazebo/urdf/wamv_gazebo.xacro. Defines the `my_boat_gazebo`
+  macro: it pulls in the pure body from my_boat_description and layers the VRX
+  marine physics plugins, the propulsion arrangement and the IMU/GPS sensor
+  stack on top.
+-->
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+  <!-- Marine dynamics macro (Surface + SimpleHydrodynamics). -->
+  <xacro:include filename="$(find my_boat_gazebo)/urdf/dynamics/my_boat_gazebo_dynamics_plugin.xacro"/>
+  <!-- Propulsion arrangement: T1/T2 bow tunnels + T3 steerable stern drive. -->
+  <xacro:include filename="$(find my_boat_gazebo)/urdf/thrusters/my_boat_thruster_layout.xacro"/>
+  <!-- IMU + GPS sensor stack (lidar later). -->
+  <xacro:include filename="$(find my_boat_gazebo)/urdf/sensors/my_boat_sensors.xacro"/>
+
+  <xacro:macro name="my_boat_gazebo">
+    <!-- The pure rigid body (CG-centred base_link, mesh, inertia). -->
+    <xacro:include filename="$(find my_boat_description)/urdf/my_boat_base.urdf.xacro"/>
+    <!-- Attach buoyancy + hydrodynamics. -->
+    <xacro:usv_dynamics_gazebo name="my_boat_dynamics_plugin"/>
+    <!-- IMU + GPS (imu_link, gps_link via fixed joints). -->
+    <xacro:my_boat_sensors/>
+  </xacro:macro>
+</robot>

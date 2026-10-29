@@ -1,0 +1,158 @@
+<?xml version="1.0"?>
+<!--
+  my_boat_thruster_layout.xacro
+  =============================
+  The vessel's actual propulsion ARRANGEMENT: it places the three units at the
+  stations read off the dimensioned drawings (utils/Top_view_.jpg, SIde_view_.jpg)
+  and bolts the matching physics plugin onto each. Analogue of VRX's
+  wamv_aft_thrusters.xacro. Edit the <xacro:property> stations below to retune.
+
+  All positions are in the my_boat/base_link (CoM-centred) frame: x fwd, y port,
+  z up. Stations are taken from utils/VRX_Thruster_Configuration.docx:
+
+    T1  port  bow  : x=+1.03  y=+0.74  z=-0.23  yaw=-1.5708  (fwd-rot thrust -Y)
+    T2  stbd  bow  : x=+1.03  y=-0.74  z=-0.23  yaw=-1.5708  (fwd-rot thrust -Y)
+    T3  stern drive: pivot x=-1.50  y=0.00  z=-0.25  yaw=+3.1416 (faces -X);
+                     shaft 0.40 m -> prop at (x=-1.50, z=-0.65); steering +/-21 deg
+
+  Sign conventions. These MUST equal the allocator's B matrix. Source of
+  truth: thruster_allocator/config/allocator_bollard.yaml (t1_dir/t2_dir/t3_dir)
+  and src/vessel_geometry.cpp. Both bow units are STARBOARD-POSITIVE:
+    * T1 thrust > 0  -> force toward STARBOARD (-Y) at the port-bow station
+    * T2 thrust > 0  -> force toward STARBOARD (-Y) at the stbd-bow station
+        - equal SAME-sign commands -> pure sway (to starboard)
+        - opposite-sign commands   -> pure yaw couple (both sit forward of C)
+    * T3 thrust > 0  -> surge force FORWARD (+X), vectored by the steering angle
+    * T3 pos (rad) > 0 -> leg yaws +Z (swings the stern-thrust vector to port)
+
+  NOTE ON T2: this used to be yaw=+1.5708 (port-positive), i.e. t2_dir=+1, the
+  allocator's OLD default. The allocator now runs t1_dir=t2_dir=-1, anchored on
+  operator-confirmed manual control (joystick_override drives steering and BOTH
+  bow units off one axis, so t1/t2 always move together). A parallel pair cannot
+  be modelled with an anti-parallel mount, so T2 is flipped here to match. If
+  you ever change t2_dir in the YAML, flip this yaw with it, or else every
+  sway command the allocator issues comes out as a yaw couple in Gazebo.
+-->
+<robot xmlns:xacro="http://ros.org/wiki/xacro" name="my_boat_thruster_layout">
+
+  <xacro:include filename="$(find my_boat_gazebo)/urdf/thrusters/my_boat_engine.xacro"/>
+  <xacro:include filename="$(find my_boat_gazebo)/urdf/thrusters/my_boat_thruster_config.xacro"/>
+
+  <!-- ===================== Stations (base_link / CoM frame) =============== -->
+  <xacro:property name="bow_x" value="1.03"/>
+  <xacro:property name="bow_y" value="0.74"/>
+  <xacro:property name="bow_z" value="-0.23"/>
+  <xacro:property name="stern_pivot" value="-1.50 0 -0.25"/>
+
+  <!-- ===================== Hardware thrust limits (N) =====================
+       BOLLARD-MEASURED, not datasheet. Mirror of the actuator: block in
+       thruster_allocator/config/allocator_bollard.yaml ("Bollhard test.xlsx",
+       2026-06-16, S-type load cell, kg->N @ g=9.80665). Keep the two files
+       equal: the allocator plans against these numbers and gz clamps to them,
+       so a mismatch shows up as silent saturation the allocator never sees.
+
+       Each pair is signed in that unit's OWN command convention (+ = the
+       "fwd-rot thrust" direction in the table above = -Y for both bow units).
+       Reverse is roughly HALF of forward on every unit, hence the asymmetry.
+       Datasheet values, for reference: bow +/-98 N, stern +/-632 N. -->
+
+  <!-- ==== SIM PROPULSION = THE FINISHED PRODUCT: 6 kn top speed (2026-10-07) ====
+       Every unit x 3.249 (= 1800 / 554.1): the stern sized for 6 kn on the real-boat hull drag
+       41 u + 165.5 u^2 (1705 N at 3.09 m/s; 1800 N -> 3.18 m/s = 6.2 kn), the bow units scaled
+       with it so the manoeuvring balance stays the boat's. The MEASURED bollard values of the
+       current hardware (kept below in comments) are what the REAL boat's allocator uses;
+       the sim chain uses thruster_allocator/config/allocator_sim_6kn.yaml, which matches THESE.
+       Measured: T1 +78.4532 / -39.2266, T2 +39.2266 / -78.4532, T3 +554.1 / -274.6 N. -->
+  <!-- T1 - bow port. (measured APISQUEEN U92 Pro: fwd 8.0 kg, rev 4.0 kg) -->
+  <xacro:property name="t1_max_thrust" value="254.9"/>
+  <xacro:property name="t1_min_thrust" value="-127.4"/>
+
+  <!-- T2 - APISQUEEN U92 Pro, bow starboard. Physically MIRRORED w.r.t. T1
+       (same motor, flipped mount), so its strong branch is the one that pushes
+       the OPPOSITE way. With both units modelled starboard-positive that makes
+       T2's limits the negated swap of T1's: only ~39 N to starboard, the full
+       ~78 N to port. Copied from T1's revised curve until T2 is bollard-tested
+       on its own. -->
+  <xacro:property name="t2_max_thrust" value="127.4"/>
+  <xacro:property name="t2_min_thrust" value="-254.9"/>
+
+  <!-- T3 - Torqeedo Cruise 3.0 R, stern. fwd 56.5 kg, rev 28.0 kg. -->
+  <xacro:property name="t3_max_thrust" value="1800.0"/>
+  <xacro:property name="t3_min_thrust" value="-892.0"/>
+
+  <!-- ==================== PROPELLER GEOMETRY (gz Thruster) ================
+       The gz Thruster plugin converts a thrust command into a propeller shaft
+       speed:
+             thrust = Ct * rho * D^4 * omega^2
+       and then commands that omega on the propeller joint. The joint carries
+       <limit velocity="200"> rad/s, so (Ct, D) must reproduce each unit's
+       MEASURED bollard peak at an omega inside that limit.
+
+       The macro default was Ct=0.004422, D=0.10 for ALL THREE units. That is
+       right for the bow U92 Pro units but badly wrong for the Torqeedo, whose
+       propeller is ~3x larger : and thrust goes as D^4, so the error is 81x.
+       554.1 N then needed 1119 rad/s, 5.6x the joint limit, so all three
+       propellers pinned at the limit and delivered ~15 N instead of 554.
+       Measured over three bags (circle_diag_1127 / _1209 / _1238): propeller
+       joints spinning at an identical 184 rad/s for commands spanning 39 to
+       554 N, with surge stuck at 0.013 m/s.
+
+       Solved below so each unit hits its measured peak at 150 rad/s, leaving
+       25% headroom under the 200 rad/s limit:
+
+         unit  D [m]   Ct         omega at peak   peak [N]
+         T1    0.10    0.034868   150             78.45
+         T2    0.10    0.034868   150             78.45  (mirrored limits)
+         T3    0.30    0.003040   150            554.10
+
+       D is the PHYSICAL propeller diameter; Ct is then solved from it and the
+       bollard figure. If a unit is re-bollard-tested, change max/min_thrust
+       and re-solve Ct = T_peak / (rho * D^4 * 150^2). Do not tune Ct alone to
+       "make it go faster" : that silently divorces the sim from the measured
+       thrusters.
+       ==================================================================== -->
+  <xacro:property name="bow_prop_diam"   value="0.10"/>
+  <!-- 6 kn propulsion: Ct re-solved for the new peaks at 150 rad/s (Ct = T / (rho D^4 150^2)):
+       bow 254.9 / 2250 = 0.11329, stern 1800 / 182250 = 0.009877. (Measured units: 0.034868 / 0.003040.) -->
+  <xacro:property name="bow_prop_ct"     value="0.11329"/>
+  <xacro:property name="stern_prop_diam" value="0.30"/>
+  <xacro:property name="stern_prop_ct"   value="0.009877"/>
+
+  <!-- ============================ T1: port bow =========================== -->
+  <!-- yaw -90 deg: positive command thrusts -Y (starboard) -->
+  <xacro:bow_thruster prefix="T1"
+                      position="${bow_x} ${bow_y} ${bow_z}" yaw="-1.5708"/>
+  <xacro:thruster_force name="T1" joint_name="T1_propeller_joint"
+                        max_thrust="${t1_max_thrust}"
+                        min_thrust="${t1_min_thrust}"
+                        prop_diam="${bow_prop_diam}"
+                        thrust_coefficient="${bow_prop_ct}"/>
+
+  <!-- ========================== T2: starboard bow ======================== -->
+  <!-- yaw -90 deg: positive command thrusts -Y (starboard), same as T1.
+       See "NOTE ON T2" in the header before changing this. -->
+  <xacro:bow_thruster prefix="T2"
+                      position="${bow_x} ${-bow_y} ${bow_z}" yaw="-1.5708"/>
+  <xacro:thruster_force name="T2" joint_name="T2_propeller_joint"
+                        max_thrust="${t2_max_thrust}"
+                        min_thrust="${t2_min_thrust}"
+                        prop_diam="${bow_prop_diam}"
+                        thrust_coefficient="${bow_prop_ct}"/>
+
+  <!-- ====================== T3: steerable stern drive ==================== -->
+  <!-- yaw 180 deg: prop faces -X so positive command thrusts +X (forward) -->
+  <xacro:stern_drive prefix="T3" pivot="${stern_pivot}" yaw="3.1416"
+                     prop_drop="0.40" prop_aft="0.0"/>
+  <!-- Surge thrust along the (steerable) leg -->
+  <xacro:thruster_force name="T3" joint_name="T3_propeller_rotation_joint"
+                        max_thrust="${t3_max_thrust}"
+                        min_thrust="${t3_min_thrust}"
+                        prop_diam="${stern_prop_diam}"
+                        thrust_coefficient="${stern_prop_ct}"/>
+  <!-- Steering angle command. rate_max = 0.1885 rad/s = 10.8 deg/s, the
+       measured linear-servo speed (= allocator_bollard.yaml
+       actuator.alpha_rate_max_deg_s). -->
+  <xacro:steering_actuator name="T3" joint_name="T3_steering_joint"
+                           rate_max="0.1885"/>
+
+</robot>

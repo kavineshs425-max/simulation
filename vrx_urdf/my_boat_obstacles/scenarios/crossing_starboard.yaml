@@ -1,0 +1,14 @@
+# World coordinates (Gazebo ENU): x east, y north, heading_deg 0 = east, 90 = north.
+# Obstacles spawn at "start" and HOLD STILL until you call
+#   ros2 service call /obstacle_spawner/run std_srvs/srv/Trigger
+#
+# Rule 15 crossing, contact on OUR STARBOARD side -> we are the give-way vessel
+# (only once visually confirmed; lidar-only it is Rules 4-10 / Rule 19).
+# design: {own_speed: 1.4, own_heading_deg: 0, tcpa: 45.0, dcpa: 0.0}
+scenario: {name: crossing_starboard}
+obstacles:
+  - name: crosser
+    model: brazilian
+    vessel_class: power_driven
+    start: {x: -465.0, y: 141.0, heading_deg: 90.0}
+    motion: {type: constant_velocity, speed: 1.0}

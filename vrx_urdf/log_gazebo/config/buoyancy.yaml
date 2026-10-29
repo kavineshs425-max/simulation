@@ -1,0 +1,30 @@
+# =============================================================================
+# Buoyancy configuration for floating_log
+# =============================================================================
+# Consumed by the vrx::Surface plugin (libSurface.so), the same buoyancy
+# model VRX attaches to each WAM-V hull. The Surface plugin approximates a
+# hull as a cylinder, which is an exact match for our log.
+#
+# Physics summary (documented for review)
+# ---------------------------------------
+#   Geometry      : cylinder, length 2.0 m, radius 0.15 m
+#   Full volume   : V = pi * r^2 * L = 0.14137 m^3
+#   Mass          : 50 kg
+#   Fluid density : 1000 kg/m^3 (VRX fresh-water default)
+#   Displaced vol : V_sub = m / rho = 0.05000 m^3
+#   Submerged frac: V_sub / V = 35.4 %  (log floats ~1/3 submerged)
+#
+# The Surface plugin samples buoyancy at a set of points distributed along
+# the hull axis (body X). Each point represents hull_length / num_points of
+# the cylinder, so more points gives finer pitch/heave resolution.
+# =============================================================================
+buoyancy:
+  link_name: base_link
+  hull_length: 2.0          # m, along body X
+  hull_radius: 0.15         # m
+  fluid_level: 0.0          # m, water surface in the VRX world is z = 0
+  fluid_density: 1000.0     # kg/m^3
+  num_points: 5             # buoyancy sample points along the hull axis
+  # Wavefield topic published by the VRX world. The Surface plugin subscribes
+  # here so the log rides the SAME wavefield as the WAM-V (Phase 3).
+  wavefield_topic: /vrx/wavefield/parameters

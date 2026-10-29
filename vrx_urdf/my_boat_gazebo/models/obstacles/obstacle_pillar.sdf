@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<!-- Navigation pillar / piling. r=0.6 m, 3.5 m proud of the water.
+     STATIC on purpose: on water a non-static body with no buoyancy plugin
+     simply sinks. <static>true</static> also means the GUI Translate tool
+     places it exactly where you drop it and it stays there.
+     Geometry is sized so it protrudes 2-3.5 m above the waterline (z=0):
+     the STVL costmap layer ignores returns below min_obstacle_height 0.3
+     and above max_obstacle_height 8.0. -->
+<sdf version="1.9">
+  <model name="obstacle_pillar">
+    <static>true</static>
+    <link name="link">
+      <collision name="collision">
+        <pose>0 0 1.0 0 0 0</pose>
+        <geometry><cylinder><radius>0.6</radius><length>5.0</length></cylinder></geometry>
+      </collision>
+      <visual name="visual">
+        <pose>0 0 1.0 0 0 0</pose>
+        <geometry><cylinder><radius>0.6</radius><length>5.0</length></cylinder></geometry>
+        <material>
+          <ambient>0.55 0.22 0.02 1</ambient>
+          <diffuse>0.95 0.40 0.05 1</diffuse>
+          <specular>0.3 0.3 0.3 1</specular>
+        </material>
+      </visual>
+    </link>
+  </model>
+</sdf>

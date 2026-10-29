@@ -1,0 +1,8 @@
+# VRX mooring post (bollard), from the Fuel cache. Collada in cm, Z-up.
+mesh: fuel:openrobotics/post/meshes/post.dae
+forward_axis: +x
+up_axis: +z
+draft: 0.3
+class: pillar
+collision: box
+colour: [0.45, 0.42, 0.38]

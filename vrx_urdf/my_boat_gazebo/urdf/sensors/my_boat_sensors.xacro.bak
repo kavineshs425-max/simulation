@@ -1,0 +1,508 @@
+<?xml version="1.0"?>
+<!--
+  my_boat_sensors.xacro
+  =====================
+  IMU + GPS + 3D LiDAR sensor stack for the my_boat digital twin. Mirrors VRX's
+  wamv sensor wiring but:
+    * uses FIXED joints (sensors are rigidly bolted to the hull),
+    * places each sensor at the task's COM-relative coordinates,
+    * ships NOISE-FREE by default: the active noise set (0) sets every Gazebo
+      noise/bias parameter to ZERO, so the IMU/GPS publish clean ground-truth
+      data. Two real-hardware noise sets (A = wish, B = actual) are kept
+      ready-to-tune but COMMENTED OUT - see the "PER-SENSOR NOISE" block below
+      for how to switch noise on.
+
+  Frame: parent is my_boat/base_link (x fwd, y port, z up), origin AT the COM.
+    imu_link   : (x=1.30,  y=0.08,  z=-0.07)
+    gps_link   : (x=0.93,  y=0.00,  z= 0.46)
+    lidar_link : (x=1.98,  y=0.00,  z= 0.59995) LSLiDAR C32, gpu_lidar
+                 (centre; BOTTOM = 0.561 m above COM, measured)
+    camera_link: lidar_link + (0.09635, 0.0, -0.05845)  RGB camera (measured rig)
+
+  Sensor systems (gz-sim-sensors-system + gz-sim-imu-system +
+  gz-sim-navsat-system) and <spherical_coordinates> must exist in the WORLD.
+  The gpu_lidar additionally needs the Sensors system's render engine (ogre2).
+  VRX competition worlds (e.g. sydney_regatta) provide all of this; the
+  standalone worlds/examples/my_boat_test.sdf has it added too.
+
+  Topics (Gazebo side, bridged to ROS by config/sensors.yaml):
+    IMU   -> /my_boat/imu/data      (gz.msgs.IMU)             -> ROS /imu/data
+    GPS   -> /my_boat/gps/fix       (gz.msgs.NavSat)          -> ROS /gps/fix
+    LiDAR -> /my_boat/lidar/points  (gz.msgs.PointCloudPacked)-> ROS /lidar/points
+-->
+<robot xmlns:xacro="http://ros.org/wiki/xacro" name="my_boat_sensors">
+
+  <!-- ====================================================================
+       Ideal (all-zero) Gaussian noise block. Standalone helper macro; NOT
+       wired into the sensors below (they use the gauss_noise macro driven by
+       the selectable noise sets). Kept for reference / manual use.
+       ==================================================================== -->
+  <xacro:macro name="zero_noise">
+    <noise type="gaussian">
+      <mean>0.0</mean>
+      <stddev>0.0</stddev>
+      <bias_mean>0.0</bias_mean>
+      <bias_stddev>0.0</bias_stddev>
+      <dynamic_bias_stddev>0.0</dynamic_bias_stddev>
+      <dynamic_bias_correlation_time>0.0</dynamic_bias_correlation_time>
+      <precision>0.0</precision>
+    </noise>
+  </xacro:macro>
+
+  <!-- ====================================================================
+       PER-SENSOR NOISE  -  pick ONE set; only the active one drives the sensors.
+       THREE selectable noise sets live here, each defining the SAME property
+       names (gyro_*, acc_*, gps_*) that the IMU/GPS macros read:
+         (0) IDEAL / NOISE-FREE : all properties 0 -> clean ground truth. ACTIVE.
+         (A) WISH / target hw   : ANELLO X3 IMU + ArduSimple simpleRTK3B Pro
+                                  (mosaic-X5) RTK GPS.            COMMENTED OUT.
+         (B) ACTUAL hw in use   : Hiwonder 10-axis IMU + a regular ~20 cm GNSS.
+                                                                  COMMENTED OUT.
+       HOW TO TURN NOISE ON / OFF:
+         * Noise-free (default): keep set (0) active; leave (A) and (B) commented.
+         * Model real noise: comment out set (0), then uncomment EXACTLY ONE of
+           (A) or (B). For set (A) also change imu_bias_tau to 1000.
+       Keep exactly one set active - two active sets redefine the same property
+       names. The lidar carries its own inline <noise> (also zero); see its macro.
+
+       gz <noise> conversions (only relevant when you re-enable a real set):
+         white stddev : (A) noise_density * sqrt(rate)  [density = ARW[rad]/60]
+                        (B) datasheet RMS noise used directly as per-sample stddev
+                            (Hiwonder quotes an RMS figure, not a density).
+         dynamic bias : gz runs a 1st-order Gauss-Markov process whose
+                        steady-state stddev = dynamic_bias_stddev * sqrt(tau/2),
+                        so dynamic_bias_stddev = target_drift * sqrt(2/tau).
+         turn-on bias : bias_stddev = constant per-run offset.
+       GPS: gz adds HORIZONTAL position noise in DEGREES of lat/lon (set as
+       metres / m_per_deg); vertical position is metres, velocity is m/s.
+       ==================================================================== -->
+  <xacro:property name="m_per_deg"    value="111320.0"/>   <!-- metres per degree of latitude (GPS sets only) -->
+  <xacro:property name="imu_bias_tau" value="500.0"/>      <!-- [s] IMU bias correlation time; only has an effect when a set with non-zero dyn_bias is active (set to 1000 for set A) -->
+
+  <!-- ================= (0) IDEAL / NOISE-FREE  (ACTIVE) =================
+       All noise properties = 0, so the gauss_noise macro adds nothing and the
+       IMU + GPS publish perfectly clean, ground-truth data. This is the active
+       default. To model real-sensor noise instead, COMMENT OUT this whole block
+       and UNCOMMENT exactly one of set (A) or set (B) below. -->
+  <!-- <xacro:property name="gyro_stddev"   value="0.0"/>   
+  <xacro:property name="gyro_bias"     value="0.0"/>   
+  <xacro:property name="gyro_dyn_bias" value="0.0"/>  
+  <xacro:property name="acc_stddev"    value="0.0"/>   
+  <xacro:property name="acc_bias"      value="0.0"/>   
+  <xacro:property name="acc_dyn_bias"  value="0.0"/>   
+  <xacro:property name="gps_pos_h"     value="0.0"/>   
+  <xacro:property name="gps_pos_v"     value="0.0"/>   
+  <xacro:property name="gps_vel_h"     value="0.0"/>   
+  <xacro:property name="gps_vel_v"     value="0.0"/>    -->
+
+  <!-- ================= (A) WISH HARDWARE  (DISABLED) ====================
+       ANELLO X3 IMU @100 Hz (white = density*sqrt(rate)):
+         gyro  white 1.4544e-4 rad/s (ARW 0.05 deg/rt-hr),
+               turn-on 2.4241e-6 (0.5 deg/hr), dyn 1.0841e-7 (needs tau=1000)
+         accel white 5.0000e-3 m/s^2 (VRW 0.03 m/s/rt-hr),
+               turn-on 1.9613e-4 (20 ug), dyn 8.7713e-6 (needs tau=1000)
+         GPS ArduSimple simpleRTK3B Pro / mosaic-X5 (RTK): pos H 1 cm, V 0.02 m,
+             vel H 0.03, V 0.05 m/s
+       To use: comment out set (0), uncomment this block, set imu_bias_tau=1000. -->
+  
+  <xacro:property name="gyro_stddev"   value="1.4544e-4"/>
+  <xacro:property name="gyro_bias"     value="2.4241e-6"/>
+  <xacro:property name="gyro_dyn_bias" value="1.0841e-7"/>
+  <xacro:property name="acc_stddev"    value="5.0000e-3"/>
+  <xacro:property name="acc_bias"      value="1.9613e-4"/>
+  <xacro:property name="acc_dyn_bias"  value="8.7713e-6"/>
+  <xacro:property name="gps_pos_h"     value="${0.010/m_per_deg}"/>
+  <xacro:property name="gps_pos_v"     value="0.020"/>
+  <xacro:property name="gps_vel_h"     value="0.030"/>
+  <xacro:property name="gps_vel_v"     value="0.050"/>
+ 
+
+  <!-- ================= (B) ACTUAL HARDWARE  (DISABLED) ==================
+       Hiwonder 10-axis IMU module (MEMS gyro/accel/mag + baro), @100 Hz.
+       Datasheet: gyro RMS noise 0.028..0.07 deg/s (using 0.07), zero drift
+       +/- 0.5..1 deg/s ; accel RMS noise 0.75..1 mg (using 1), zero drift
+       +/- 20..40 mg. Zero-drift range read as turn-on offset (0.5 deg/s,
+       20 mg) plus in-run drift (~0.5 deg/s, ~20 mg, tau=500).
+       Per-property values (units), in the SAME order as the lines below:
+         gyro_stddev   1.2217e-3 rad/s   white  : 0.07 deg/s RMS
+         gyro_bias     8.7266e-3 rad/s   turn-on: 0.5 deg/s zero drift
+         gyro_dyn_bias 5.5192e-4 rad/s   in-run : ~0.5 deg/s drift (uses imu_bias_tau)
+         acc_stddev    9.8067e-3 m/s^2   white  : 1 mg RMS
+         acc_bias      1.9613e-1 m/s^2   turn-on: 20 mg zero drift
+         acc_dyn_bias  1.2405e-2 m/s^2   in-run : ~20 mg drift (uses imu_bias_tau)
+         gps_pos_h     0.20 m (->deg)    20 cm horizontal accuracy
+         gps_pos_v     0.40 m            ~2x horizontal
+         gps_vel_h     0.10 m/s          typical regular GNSS
+         gps_vel_v     0.20 m/s
+       To use: comment out set (0), then uncomment this block. -->
+  
+  <!-- <xacro:property name="gyro_stddev"   value="1.2217e-3"/>
+  <xacro:property name="gyro_bias"     value="8.7266e-3"/>
+  <xacro:property name="gyro_dyn_bias" value="5.5192e-4"/>
+  <xacro:property name="acc_stddev"    value="9.8067e-3"/>
+  <xacro:property name="acc_bias"      value="1.9613e-1"/>
+  <xacro:property name="acc_dyn_bias"  value="1.2405e-2"/>
+  <xacro:property name="gps_pos_h"     value="${0.20/m_per_deg}"/>
+  <xacro:property name="gps_pos_v"     value="0.40"/>
+  <xacro:property name="gps_vel_h"     value="0.10"/>
+  <xacro:property name="gps_vel_v"     value="0.20"/> -->
+ 
+
+  <!-- Full Gaussian-with-bias noise block: white (mean/stddev) + turn-on bias
+       (bias_stddev) + slow Gauss-Markov drift (dyn_bias/dyn_tau) + optional
+       quantization (prec). Unset args default to 0 = that effect disabled. -->
+  <xacro:macro name="gauss_noise"
+               params="stddev:=0.0 bias:=0.0 dyn_bias:=0.0 dyn_tau:=0.0 prec:=0.0 mean:=0.0">
+    <noise type="gaussian">
+      <mean>${mean}</mean>
+      <stddev>${stddev}</stddev>
+      <bias_mean>0.0</bias_mean>
+      <bias_stddev>${bias}</bias_stddev>
+      <dynamic_bias_stddev>${dyn_bias}</dynamic_bias_stddev>
+      <dynamic_bias_correlation_time>${dyn_tau}</dynamic_bias_correlation_time>
+      <precision>${prec}</precision>
+    </noise>
+  </xacro:macro>
+
+  <!-- ====================================================================
+       IMU  (sensor_msgs/Imu: orientation, angular_velocity, linear_accel)
+       ==================================================================== -->
+  <xacro:macro name="my_boat_imu" params="name:=imu x y z R:=0 P:=0 Y:=0 update_rate:=100">
+    <link name="${namespace}/${name}_link">
+      <visual name="${name}_visual">
+        <geometry>
+          <box size="0.05 0.025 0.005"/>
+        </geometry>
+        <material name="${name}_material">
+          <color rgba="1.0 0.0 0.0 1.0"/>
+        </material>
+      </visual>
+      <collision name="${name}_collision">
+        <geometry>
+          <box size="0.05 0.025 0.005"/>
+        </geometry>
+      </collision>
+      <inertial>
+        <mass value="0.1"/>
+        <inertia ixx="0.00000542" ixy="0.0" ixz="0.0"
+                 iyy="0.00002104" iyz="0.0" izz="0.00002604"/>
+      </inertial>
+    </link>
+
+    <joint name="${namespace}/${name}_joint" type="fixed">
+      <origin xyz="${x} ${y} ${z}" rpy="${R} ${P} ${Y}"/>
+      <parent link="${namespace}/base_link"/>
+      <child  link="${namespace}/${name}_link"/>
+    </joint>
+
+    <gazebo reference="${namespace}/${name}_link">
+      <sensor name="${name}_sensor" type="imu">
+        <always_on>1</always_on>
+        <update_rate>${update_rate}</update_rate>
+        <topic>/${namespace}/${name}/data</topic>
+        <!-- Stamp messages with the link frame (exists in the TF tree) instead of
+             the default scoped sensor name, so robot_localization can transform
+             the IMU into base_link. Matches the lidar sensor below. -->
+        <gz_frame_id>${namespace}/${name}_link</gz_frame_id>
+        <imu>
+          <orientation_reference_frame>
+            <localization>ENU</localization>
+          </orientation_reference_frame>
+          <!-- NOISE INJECTION (per axis): white + turn-on bias + in-run drift,
+               pulled from the active noise set's gyro_*/acc_* properties.
+               All-zero in set (0) -> no noise; switch sets above to enable. -->
+          <angular_velocity>
+            <x><xacro:gauss_noise stddev="${gyro_stddev}" bias="${gyro_bias}" dyn_bias="${gyro_dyn_bias}" dyn_tau="${imu_bias_tau}"/></x>
+            <y><xacro:gauss_noise stddev="${gyro_stddev}" bias="${gyro_bias}" dyn_bias="${gyro_dyn_bias}" dyn_tau="${imu_bias_tau}"/></y>
+            <z><xacro:gauss_noise stddev="${gyro_stddev}" bias="${gyro_bias}" dyn_bias="${gyro_dyn_bias}" dyn_tau="${imu_bias_tau}"/></z>
+          </angular_velocity>
+          <linear_acceleration>
+            <x><xacro:gauss_noise stddev="${acc_stddev}" bias="${acc_bias}" dyn_bias="${acc_dyn_bias}" dyn_tau="${imu_bias_tau}"/></x>
+            <y><xacro:gauss_noise stddev="${acc_stddev}" bias="${acc_bias}" dyn_bias="${acc_dyn_bias}" dyn_tau="${imu_bias_tau}"/></y>
+            <z><xacro:gauss_noise stddev="${acc_stddev}" bias="${acc_bias}" dyn_bias="${acc_dyn_bias}" dyn_tau="${imu_bias_tau}"/></z>
+          </linear_acceleration>
+        </imu>
+      </sensor>
+    </gazebo>
+  </xacro:macro>
+
+  <!-- ====================================================================
+       GPS / NavSat  (sensor_msgs/NavSatFix: latitude, longitude, altitude)
+       ==================================================================== -->
+  <xacro:macro name="my_boat_gps" params="name:=gps x y z R:=0 P:=0 Y:=0 update_rate:=10">
+    <link name="${namespace}/${name}_link">
+      <visual name="${name}_base_visual">
+        <origin xyz="0 0 0.025" rpy="0 0 0"/>
+        <geometry>
+          <cylinder length="0.05" radius="0.015"/>
+        </geometry>
+        <material name="${name}_material">
+          <color rgba="0.1 0.1 0.1 1.0"/>
+        </material>
+      </visual>
+      <visual name="${name}_antenna_visual">
+        <origin xyz="0 0 0.11" rpy="0 0 0"/>
+        <geometry>
+          <cylinder length="0.04" radius="0.07"/>
+        </geometry>
+        <material name="${name}_antenna_material">
+          <color rgba="0.9 0.9 0.9 1.0"/>
+        </material>
+      </visual>
+      <collision name="${name}_collision">
+        <origin xyz="0 0 0.06" rpy="0 0 0"/>
+        <geometry>
+          <cylinder length="0.12" radius="0.07"/>
+        </geometry>
+      </collision>
+      <inertial>
+        <mass value="1.0"/>
+        <inertia ixx="0.006458" ixy="0.0" ixz="0.0"
+                 iyy="0.006458" iyz="0.0" izz="0.01125"/>
+      </inertial>
+    </link>
+
+    <joint name="${namespace}/${name}_joint" type="fixed">
+      <origin xyz="${x} ${y} ${z}" rpy="${R} ${P} ${Y}"/>
+      <parent link="${namespace}/base_link"/>
+      <child  link="${namespace}/${name}_link"/>
+    </joint>
+
+    <gazebo reference="${namespace}/${name}_link">
+      <sensor name="${name}_sensor" type="navsat">
+        <always_on>1</always_on>
+        <update_rate>${update_rate}</update_rate>
+        <topic>/${namespace}/${name}/fix</topic>
+        <!-- Stamp with the link frame (in the TF tree) so navsat_transform can
+             apply the antenna offset. Matches the lidar sensor below. -->
+        <gz_frame_id>${namespace}/${name}_link</gz_frame_id>
+        <navsat>
+          <!-- NOISE INJECTION: position/velocity noise from the active set's
+               gps_* properties (horizontal in DEGREES of lat/lon via m_per_deg).
+               All-zero in set (0) -> no noise; switch sets above to enable. -->
+          <position_sensing>
+            <horizontal><xacro:gauss_noise stddev="${gps_pos_h}"/></horizontal>
+            <vertical><xacro:gauss_noise stddev="${gps_pos_v}"/></vertical>
+          </position_sensing>
+          <velocity_sensing>
+            <horizontal><xacro:gauss_noise stddev="${gps_vel_h}"/></horizontal>
+            <vertical><xacro:gauss_noise stddev="${gps_vel_v}"/></vertical>
+          </velocity_sensing>
+        </navsat>
+      </sensor>
+    </gazebo>
+  </xacro:macro>
+
+  <!-- ====================================================================
+       LiDAR  -  LSLiDAR C32, 32-channel mechanical 3D lidar, as a Gazebo
+       gpu_lidar (GPU ray tracing). Publishes sensor_msgs/PointCloud2.
+         360 deg horizontal (-pi..+pi); 32 vertical beams over -16..+15 deg;
+         range 0.3..130 m @ 0.01 m; 10 Hz. All noise present and ZERO.
+       NOTE: a gpu_lidar publishes its point cloud on "<topic>/points", so with
+       topic "/my_boat/lidar" the cloud lands on "/my_boat/lidar/points".
+       ==================================================================== -->
+  <xacro:macro name="my_boat_lidar"
+               params="name:=lidar x y z R:=0 P:=0 Y:=0 update_rate:=10
+                       h_samples:=1800 v_samples:=32
+                       h_min:=${-pi} h_max:=${pi}
+                       v_min_deg:=-16 v_max_deg:=15
+                       min_range:=0.3 max_range:=130 range_res:=0.01">
+    <link name="${namespace}/${name}_link">
+      <visual name="${name}_visual">
+        <geometry>
+          <cylinder radius="0.051" length="0.0779"/>  <!-- LSLiDAR C32: Ø102 mm x 77.9 mm -->
+
+        </geometry>
+        <material name="${name}_material">
+          <color rgba="0.1 0.1 0.1 1.0"/>
+        </material>
+      </visual>
+      <collision name="${name}_collision">
+        <geometry>
+          <cylinder radius="0.051" length="0.0779"/>  <!-- LSLiDAR C32: Ø102 mm x 77.9 mm -->
+
+        </geometry>
+      </collision>
+      <inertial>
+        <mass value="0.84"/>   <!-- LSLiDAR C32 ~ 0.84 kg -->
+        <!-- Solid-cylinder inertia for r=0.051 m, h=0.0779 m, m=0.84 kg:
+             Ixx=Iyy=(1/12)m(3r^2+h^2)=0.00097, Izz=(1/2)m r^2=0.00109. -->
+        <inertia ixx="0.00097" ixy="0.0" ixz="0.0"
+                 iyy="0.00097" iyz="0.0" izz="0.00109"/>
+      </inertial>
+    </link>
+
+    <joint name="${namespace}/${name}_joint" type="fixed">
+      <origin xyz="${x} ${y} ${z}" rpy="${R} ${P} ${Y}"/>
+      <parent link="${namespace}/base_link"/>
+      <child  link="${namespace}/${name}_link"/>
+    </joint>
+
+    <gazebo reference="${namespace}/${name}_link">
+      <sensor name="${name}_sensor" type="gpu_lidar">
+        <always_on>1</always_on>
+        <update_rate>${update_rate}</update_rate>
+        <topic>/${namespace}/${name}</topic>
+        <gz_frame_id>${namespace}/${name}_link</gz_frame_id>
+        <lidar>
+          <scan>
+            <horizontal>
+              <samples>${h_samples}</samples>
+              <resolution>1</resolution>
+              <min_angle>${h_min}</min_angle>
+              <max_angle>${h_max}</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>${v_samples}</samples>
+              <resolution>1</resolution>
+              <min_angle>${radians(v_min_deg)}</min_angle>
+              <max_angle>${radians(v_max_deg)}</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>${min_range}</min>
+            <max>${max_range}</max>
+            <resolution>${range_res}</resolution>
+          </range>
+          <!-- LIDAR NOISE (noise-free by default; independent of the IMU/GPS
+               sets above). The gz lidar/ray <noise> schema only defines
+               type/mean/stddev (per sdformat lidar.sdf) - bias_mean, precision,
+               dynamic_bias_* belong to the IMU/GPS noise model, not lidar, so
+               these two ARE all the available lidar noise params. Both 0 = ideal
+               range returns; to model range noise set <stddev> to the 1-sigma
+               range error in metres (e.g. 0.02) and leave <mean> at 0.0. -->
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.0</stddev>
+          </noise>
+        </lidar>
+      </sensor>
+    </gazebo>
+  </xacro:macro>
+
+  <!-- ====================================================================
+       CAMERA  -  640x480 RGB pinhole camera, mounted on the LIDAR bracket
+       (parent = lidar_link), ahead of and below the lidar.
+
+       PLACEMENT from the user's measured side/front views (utils/lidar_camera.jpg,
+       all dims in cm), given w.r.t the LIDAR BOTTOM + centre axis:
+         forward : camera REAR face 8.27 cm ahead of the lidar centre axis
+         vertical: camera TOP 0.7 cm below the lidar bottom
+         lateral : centred on the lidar axis (Y = 0)
+       Camera body box = 2.73 (X, fore-aft) x 8.2 (Y, width) x 2.5 (Z, height) cm
+       (side view: X 2.73 x Z 2.5; front view: Y 8.2 x Z 2.5; shared height 2.5).
+       -> camera CENTRE w.r.t the lidar bottom: X = 8.27 + 2.73/2 = 9.635 cm fwd,
+          Z = 0.7 + 2.5/2 = 1.95 cm below the bottom.
+       lidar_link origin is the cylinder CENTRE, so its bottom is half the lidar
+       height (0.0779/2 = 3.895 cm) below it. Converting to the lidar_link frame:
+         xyz = (0.09635, 0.0, -0.05845) m,  rpy = (0, 0, 0) -> faces +X (forward).
+       (Replaces the earlier camera/lidar-calibration-derived pose; this is a
+        direct physical measurement of the real rig.)
+
+       Intrinsics below are UNCHANGED (optical calibration, independent of the
+       mount), from ros2_main_software/camera_lidar_matrix/intrenstic_param.txt:
+       fx 471.99 fy 475.74 cx 319.94 cy 238.49 -> horizontal_fov 1.19158 rad
+       (68.27 deg); plumb_bob distortion.
+       ==================================================================== -->
+  <xacro:macro name="my_boat_camera"
+               params="name:=camera parent:=${namespace}/lidar_link
+                       x:=0.09635  y:=0.0       z:=-0.05845
+                       R:=0        P:=0         Y:=0
+                       update_rate:=30">
+    <link name="${namespace}/${name}_link">
+      <visual name="${name}_visual">
+        <geometry>
+          <box size="0.0273 0.082 0.025"/>  <!-- measured: X 2.73 x Y 8.2 x Z 2.5 cm -->
+        </geometry>
+        <material name="${name}_material">
+          <color rgba="0.0 0.0 0.8 1.0"/>
+        </material>
+      </visual>
+      <collision name="${name}_collision">
+        <geometry>
+          <box size="0.0273 0.082 0.025"/>  <!-- measured: X 2.73 x Y 8.2 x Z 2.5 cm -->
+        </geometry>
+      </collision>
+      <inertial>
+        <mass value="0.05"/>
+        <!-- Solid-box inertia for 0.0273 x 0.082 x 0.025 m, m=0.05 kg. -->
+        <inertia ixx="3.06e-5" ixy="0.0" ixz="0.0"
+                 iyy="5.71e-6" iyz="0.0" izz="3.11e-5"/>
+      </inertial>
+    </link>
+
+    <!-- Mounted ON the lidar (parent = lidar_link); origin = measured offset. -->
+    <joint name="${namespace}/${name}_joint" type="fixed">
+      <origin xyz="${x} ${y} ${z}" rpy="${R} ${P} ${Y}"/>
+      <parent link="${parent}"/>
+      <child  link="${namespace}/${name}_link"/>
+    </joint>
+
+    <!-- ROS optical frame (x-right, y-down, z-fwd) for camera_info / projection. -->
+    <link name="${namespace}/${name}_optical_link"/>
+    <joint name="${namespace}/${name}_optical_joint" type="fixed">
+      <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}"/>
+      <parent link="${namespace}/${name}_link"/>
+      <child  link="${namespace}/${name}_optical_link"/>
+    </joint>
+
+    <gazebo reference="${namespace}/${name}_link">
+      <sensor name="${name}_sensor" type="camera">
+        <always_on>1</always_on>
+        <update_rate>${update_rate}</update_rate>
+        <topic>/${namespace}/${name}</topic>
+        <!-- Stamp image / camera_info in the optical frame (ROS convention). -->
+        <gz_frame_id>${namespace}/${name}_optical_link</gz_frame_id>
+        <camera>
+          <horizontal_fov>1.191581</horizontal_fov>   <!-- 2*atan(W/2fx), W=640 fx=471.99 -->
+          <image>
+            <width>640</width>
+            <height>480</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip>
+            <near>0.05</near>
+            <far>300.0</far>
+          </clip>
+          <!-- plumb_bob / Brown-Conrady distortion (intrenstic_param.txt).
+               center = (cx/W, cy/H). -->
+          <distortion>
+            <k1>0.095652</k1>
+            <k2>-0.140237</k2>
+            <k3>0.0</k3>
+            <p1>0.003701</p1>
+            <p2>0.002291</p2>
+            <center>0.49990 0.49686</center>
+          </distortion>
+          <!-- Exact pinhole intrinsics (gz honours these for non-square pixels
+               and writes them into the published camera_info). -->
+          <lens>
+            <intrinsics>
+              <fx>471.993854</fx>
+              <fy>475.737131</fy>
+              <cx>319.937646</cx>
+              <cy>238.490867</cy>
+              <s>0.0</s>
+            </intrinsics>
+          </lens>
+        </camera>
+      </sensor>
+    </gazebo>
+  </xacro:macro>
+
+  <!-- ====================================================================
+       Instantiate the my_boat sensor stack at the task's COM-relative poses.
+       ==================================================================== -->
+  <xacro:macro name="my_boat_sensors">
+    <xacro:my_boat_imu   name="imu"   x="1.30" y="0.08" z="-0.07"/>
+    <xacro:my_boat_gps   name="gps"   x="0.93" y="0.00" z="0.46"/>
+    <!-- z = 0.59995: lidar BOTTOM measured 56.1 cm above base_link/COM,
+         + half the C32 height (0.0779/2 = 0.03895) to the cylinder centre. -->
+    <xacro:my_boat_lidar name="lidar" x="1.98" y="0.00" z="0.59995"/>
+    <!-- Camera is placed w.r.t the lidar (parent = lidar_link), so it must be
+         instantiated after the lidar. -->
+    <xacro:my_boat_camera name="camera"/>
+  </xacro:macro>
+
+</robot>

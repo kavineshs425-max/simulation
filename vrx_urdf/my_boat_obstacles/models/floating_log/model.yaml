@@ -1,0 +1,8 @@
+# Floating log / timber, 5 m x 0.5 m, mostly awash
+# Generated with trimesh (matte PBR, so it does not render black).
+mesh: floating_log.glb
+forward_axis: +x
+up_axis: +z
+draft: 0.35
+class: debris
+collision: box
